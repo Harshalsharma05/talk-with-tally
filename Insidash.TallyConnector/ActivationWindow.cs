@@ -1,0 +1,119 @@
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Windows.Forms;
+using Newtonsoft.Json;
+
+namespace Insidash.TallyConnector
+{
+    public class ActivationWindow : Form
+    {
+        private TextBox    _keyInput;
+        private Button     _connectBtn;
+        private Label      _statusLabel;
+        private static readonly HttpClient _client = new HttpClient();
+
+        public ActivationWindow()
+        {
+            Text            = "Insidash Tally Connector — Activation";
+            Size            = new System.Drawing.Size(420, 220);
+            StartPosition   = FormStartPosition.CenterScreen;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox     = false;
+
+            var label = new Label {
+                Text = "Enter your Activation Key:", Location = new System.Drawing.Point(20, 30),
+                AutoSize = true
+            };
+
+            _keyInput = new TextBox {
+                Location = new System.Drawing.Point(20, 55), Width = 360,
+                CharacterCasing = CharacterCasing.Upper, Font = new System.Drawing.Font("Consolas", 12)
+            };
+
+            _connectBtn = new Button {
+                Text = "Activate", Location = new System.Drawing.Point(20, 95),
+                Width = 360, Height = 35
+            };
+            _connectBtn.Click += OnActivateClick;
+
+            _statusLabel = new Label {
+                Location = new System.Drawing.Point(20, 140), Width = 360,
+                AutoSize = false, ForeColor = System.Drawing.Color.Red
+            };
+
+            Controls.AddRange(new Control[] { label, _keyInput, _connectBtn, _statusLabel });
+        }
+
+        private async void OnActivateClick(object sender, EventArgs e)
+        {
+            string key = _keyInput.Text.Trim();
+            if (key.Length != 16) {
+                _statusLabel.Text = "Key must be exactly 16 characters.";
+                _statusLabel.ForeColor = System.Drawing.Color.Red;
+                return;
+            }
+
+            _connectBtn.Enabled = false;
+            _statusLabel.Text   = "Activating...";
+            _statusLabel.ForeColor = System.Drawing.Color.Gray;
+
+            try
+            {
+                string apiBase = System.Configuration.ConfigurationManager.AppSettings["ApiBaseUrl"];
+                if (string.IsNullOrWhiteSpace(apiBase))
+                {
+                    _statusLabel.Text = "ApiBaseUrl not set in App.config.";
+                    _statusLabel.ForeColor = System.Drawing.Color.Red;
+                    _connectBtn.Enabled = true;
+                    return;
+                }
+
+                var body = JsonConvert.SerializeObject(new {
+                    activationKey = key,
+                    machineID     = MachineIdentifier.Get(),
+                    agentVersion  = System.Reflection.Assembly.GetExecutingAssembly()
+                                        .GetName().Version.ToString(3)
+                });
+
+                using (var req = new HttpRequestMessage(HttpMethod.Post, apiBase.TrimEnd('/') + "/api/connector/activate"))
+                {
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    var resp    = await _client.SendAsync(req);
+
+                    if (!resp.IsSuccessStatusCode) {
+                        _statusLabel.Text      = "Invalid or already-used key. Contact Insidash support.";
+                        _statusLabel.ForeColor = System.Drawing.Color.Red;
+                        _connectBtn.Enabled    = true;
+                        return;
+                    }
+
+                    string json  = await resp.Content.ReadAsStringAsync();
+                    dynamic data = JsonConvert.DeserializeObject(json);
+
+                    LocalConfig.Save(new ConnectorConfig {
+                        SyncToken      = (string)data.syncToken,
+                        CompanyID      = (int)data.companyId,
+                        TallyHost      = (string)data.tallyHost ?? "localhost",
+                        TallyPort      = (string)data.tallyPort ?? "9000",
+                        SyncIntervalMs = (int)(data.syncIntervalMs ?? 300000)
+                    });
+
+                    MessageBox.Show(
+                        "✓ Activation successful! The Tally Connector is now active.\n\n" +
+                        "Tally data will sync automatically in the background.",
+                        "Insidash Connected", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    DialogResult = DialogResult.OK;
+                    Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                _statusLabel.Text      = $"Connection error: {ex.Message}";
+                _statusLabel.ForeColor = System.Drawing.Color.Red;
+                _connectBtn.Enabled    = true;
+            }
+        }
+    }
+}

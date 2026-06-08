@@ -1,0 +1,1 @@
+<%@ Application Codebehind="Global.asax.cs" Inherits="Insidash.TallyApi.WebApiApplication" Language="C#" %>

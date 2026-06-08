@@ -1,0 +1,573 @@
+/* ═══════════════════════════════════════════════════════════════
+   TalkWithTally Widget Styles
+   Depends on Bootstrap 5 being loaded first.
+   All selectors prefixed with .twt- to avoid collisions.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── CSS Variables ───────────────────────────────────────────── */
+:root {
+    --twt-primary:        #0d7377;
+    --twt-primary-dark:   #0a5c60;
+    --twt-primary-light:  #e8f5f5;
+    --twt-accent:         #14a085;
+    --twt-white:          #ffffff;
+    --twt-bg:             #f8fafb;
+    --twt-border:         #e2e8ea;
+    --twt-text:           #1a202c;
+    --twt-text-muted:     #718096;
+    --twt-user-bubble:    #0d7377;
+    --twt-ai-bubble:      #ffffff;
+    --twt-shadow:         0 8px 32px rgba(0, 0, 0, 0.14);
+    --twt-radius:         16px;
+    --twt-radius-sm:      10px;
+    --twt-width:          380px;
+    --twt-height:         560px;
+    --twt-bottom:         90px;   /* sits above the existing Ask AI button */
+    --twt-right:          24px;
+}
+
+/* ── Utility ─────────────────────────────────────────────────── */
+.twt-hidden { display: none !important; }
+
+/* ── Trigger Button ──────────────────────────────────────────── */
+#twt-trigger-btn {
+    position: fixed;
+    bottom: var(--twt-bottom);
+    right: var(--twt-right);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--twt-primary);
+    color: var(--twt-white);
+    border: none;
+    border-radius: 50px;
+    padding: 10px 18px 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(13, 115, 119, 0.35);
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    user-select: none;
+}
+
+#twt-trigger-btn:hover {
+    background: var(--twt-primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13, 115, 119, 0.45);
+}
+
+/* ── Widget Container ────────────────────────────────────────── */
+#twt-widget {
+    position: fixed;
+    bottom: calc(var(--twt-bottom) + 54px);
+    right: var(--twt-right);
+    z-index: 9999;
+    width: var(--twt-width);
+    height: var(--twt-height);
+    background: var(--twt-white);
+    border-radius: var(--twt-radius);
+    box-shadow: var(--twt-shadow);
+    border: 1px solid var(--twt-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: twt-slide-up 0.25s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@keyframes twt-slide-up {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Screens ─────────────────────────────────────────────────── */
+.twt-screen {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Splash Screen ───────────────────────────────────────────── */
+.twt-splash-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 28px;
+    text-align: center;
+    background: linear-gradient(160deg, #f0fafa 0%, #ffffff 100%);
+}
+
+.twt-splash-icon {
+    width: 80px;
+    height: 80px;
+    background: var(--twt-primary-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.twt-splash-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--twt-primary);
+    margin-bottom: 6px;
+}
+
+.twt-splash-sub {
+    color: var(--twt-text-muted);
+    font-size: 14px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.twt-splash-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 24px;
+    text-align: left;
+    width: 100%;
+}
+
+.twt-splash-features li {
+    font-size: 13.5px;
+    color: var(--twt-text);
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.twt-splash-features li:last-child { border-bottom: none; }
+
+/* ── Not Connected Screen ────────────────────────────────────── */
+.twt-notconnected-body {
+    flex: 1;
+    padding: 28px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.twt-nc-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.twt-notconnected-body h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--twt-text);
+    margin-bottom: 10px;
+}
+
+.twt-notconnected-body p {
+    font-size: 13.5px;
+    color: var(--twt-text-muted);
+    line-height: 1.55;
+    margin-bottom: 12px;
+}
+
+.twt-nc-steps-title {
+    font-weight: 600;
+    color: var(--twt-text);
+    margin-bottom: 6px !important;
+}
+
+.twt-nc-steps {
+    text-align: left;
+    font-size: 13px;
+    color: var(--twt-text-muted);
+    padding-left: 20px;
+    margin-bottom: 20px;
+    line-height: 1.8;
+}
+
+/* ── Buttons (shared) ────────────────────────────────────────── */
+.twt-btn-primary {
+    display: block;
+    width: 100%;
+    padding: 11px 20px;
+    background: var(--twt-primary);
+    color: var(--twt-white);
+    border: none;
+    border-radius: var(--twt-radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    transition: background 0.2s;
+    margin-bottom: 10px;
+}
+
+.twt-btn-primary:hover { background: var(--twt-primary-dark); color: #fff; }
+
+.twt-btn-secondary {
+    display: block;
+    width: 100%;
+    padding: 9px 20px;
+    background: transparent;
+    color: var(--twt-primary);
+    border: 1.5px solid var(--twt-primary);
+    border-radius: var(--twt-radius-sm);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.twt-btn-secondary:hover { background: var(--twt-primary-light); }
+
+/* ── Chat Header ─────────────────────────────────────────────── */
+.twt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    background: var(--twt-primary);
+    color: var(--twt-white);
+    flex-shrink: 0;
+}
+
+.twt-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.twt-header-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.twt-header-badge {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* Status dot — pulses green when connected */
+.twt-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #94a3b8;  /* grey = unknown */
+    flex-shrink: 0;
+}
+
+.twt-dot.connected    { background: #4ade80; animation: twt-pulse 2s infinite; }
+.twt-dot.not-synced   { background: #f59e0b; }
+.twt-dot.error        { background: #f87171; }
+
+@keyframes twt-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
+}
+
+.twt-icon-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.8);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+.twt-icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* ── Sync Bar ────────────────────────────────────────────────── */
+.twt-syncbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background: #f0fafa;
+    border-bottom: 1px solid var(--twt-border);
+    flex-shrink: 0;
+}
+
+#twt-sync-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--twt-text-muted);
+}
+
+.twt-sync-icon { flex-shrink: 0; }
+.twt-sync-icon.spinning { animation: twt-spin 1s linear infinite; }
+
+@keyframes twt-spin { to { transform: rotate(360deg); } }
+
+.twt-syncnow-btn {
+    background: none;
+    border: 1px solid var(--twt-primary);
+    color: var(--twt-primary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.twt-syncnow-btn:hover  { background: var(--twt-primary); color: #fff; }
+.twt-syncnow-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── Sync Toast ──────────────────────────────────────────────── */
+.twt-sync-toast {
+    background: #dcfce7;
+    color: #166534;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-bottom: 1px solid #bbf7d0;
+    text-align: center;
+    flex-shrink: 0;
+    animation: twt-fade-in 0.2s ease;
+}
+
+@keyframes twt-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Chat Area ───────────────────────────────────────────────── */
+.twt-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 14px 8px;
+    background: var(--twt-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scroll-behavior: smooth;
+}
+
+/* Scrollbar styling */
+.twt-chat-area::-webkit-scrollbar { width: 4px; }
+.twt-chat-area::-webkit-scrollbar-track { background: transparent; }
+.twt-chat-area::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+/* ── Message Bubbles ─────────────────────────────────────────── */
+.twt-msg-row {
+    display: flex;
+    gap: 8px;
+    max-width: 100%;
+}
+
+.twt-msg-row.user {
+    flex-direction: row-reverse;
+}
+
+.twt-msg-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--twt-primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
+.twt-msg-row.user .twt-msg-avatar {
+    background: var(--twt-user-bubble);
+    color: #fff;
+}
+
+.twt-bubble {
+    max-width: 80%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--twt-text);
+    background: var(--twt-ai-bubble);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    border-bottom-left-radius: 4px;
+    word-break: break-word;
+}
+
+.twt-msg-row.user .twt-bubble {
+    background: var(--twt-user-bubble);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: 14px;
+}
+
+/* ── Table responses inside AI bubbles ───────────────────────── */
+.twt-bubble .twt-response-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.twt-bubble .twt-response-table th {
+    background: var(--twt-primary);
+    color: #fff;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.twt-bubble .twt-response-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #f0f4f4;
+    color: var(--twt-text);
+}
+
+.twt-bubble .twt-response-table tr:last-child td { border-bottom: none; }
+.twt-bubble .twt-response-table tr:nth-child(even) td { background: #f8fafa; }
+
+/* ── Typing Indicator ────────────────────────────────────────── */
+.twt-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 13px;
+    background: var(--twt-ai-bubble);
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    width: fit-content;
+}
+
+.twt-typing span {
+    width: 7px;
+    height: 7px;
+    background: var(--twt-primary);
+    border-radius: 50%;
+    opacity: 0.4;
+    animation: twt-bounce 1.2s ease-in-out infinite;
+}
+
+.twt-typing span:nth-child(2) { animation-delay: 0.2s; }
+.twt-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes twt-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40%            { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Timestamp under bubbles ─────────────────────────────────── */
+.twt-msg-time {
+    font-size: 10.5px;
+    color: #a0aec0;
+    margin-top: 2px;
+    padding: 0 4px;
+    text-align: right;
+}
+
+.twt-msg-row.user .twt-msg-time { text-align: right; }
+.twt-msg-row:not(.user) .twt-msg-time { text-align: left; }
+
+/* ── Suggestion Chips ────────────────────────────────────────── */
+.twt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--twt-white);
+    border-top: 1px solid var(--twt-border);
+    flex-shrink: 0;
+}
+
+.twt-chip {
+    background: var(--twt-primary-light);
+    color: var(--twt-primary);
+    border: 1px solid rgba(13, 115, 119, 0.2);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.twt-chip:hover {
+    background: var(--twt-primary);
+    color: #fff;
+    border-color: var(--twt-primary);
+}
+
+/* ── Input Bar ───────────────────────────────────────────────── */
+.twt-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--twt-white);
+    border-top: 1px solid var(--twt-border);
+    flex-shrink: 0;
+}
+
+.twt-input {
+    flex: 1;
+    border: 1.5px solid var(--twt-border);
+    border-radius: 22px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    color: var(--twt-text);
+    background: var(--twt-bg);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.twt-input:focus { border-color: var(--twt-primary); background: #fff; }
+.twt-input::placeholder { color: #a0aec0; }
+
+.twt-send-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--twt-primary);
+    color: #fff;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.twt-send-btn:hover   { background: var(--twt-primary-dark); }
+.twt-send-btn:active  { transform: scale(0.93); }
+.twt-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Footer label ────────────────────────────────────────────── */
+.twt-footer-label {
+    text-align: center;
+    font-size: 10px;
+    color: #c0ccd4;
+    padding: 4px 0 6px;
+    background: var(--twt-white);
+    flex-shrink: 0;
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <connectionStrings>
+        <!-- Replace values below with your DB server, credentials and database name -->
+        <add name="InsidashTallyDb" connectionString="" providerName="" />
+    </connectionStrings>
+
+    <appSettings>
+        <!-- Optional: AI provider keys (fill if using AI services) -->
+        <add key="CLAUDE_API_KEY" value="PUT_CLAUDE_KEY_HERE" />
+        <add key="GROQ_API_KEY" value="PUT_GROQ_KEY_HERE" />
+    </appSettings>
+</configuration>

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TalkWithTally — Dev Preview</title>
+
+    <!-- Bootstrap 5 -->
+    <link rel="stylesheet" href="css/vendor/bootstrap.min.css" />
+
+    <!-- TalkWithTally widget styles -->
+    <!-- Created in Phase 3. File must exist before opening in browser. -->
+    <link rel="stylesheet" href="css/talkwithtally.css?v=1" />
+
+    <style>
+        /*
+         * DEV SHELL STYLES ONLY
+         * These styles are NOT copied to production.
+         * They exist purely to give the blank page a neutral background
+         * so the widget renders against something visible during development.
+         */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #f0f2f5;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .dev-notice {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a202c;
+            color: #a0aec0;
+            font-size: 12px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            white-space: nowrap;
+            z-index: 100;
+            letter-spacing: 0.3px;
+        }
+
+        .dev-notice strong { color: #68d391; }
+    </style>
+</head>
+<body>
+
+    <!-- DEV ONLY: remove this div when copying to production -->
+    <div class="dev-notice">
+        🛠 Dev Preview &nbsp;|&nbsp; <strong>TalkWithTally widget only</strong>
+        &nbsp;|&nbsp; Click the teal button → bottom right
+    </div>
+
+    <!--
+    ════════════════════════════════════════════════════════════
+    TWT WIDGET START
+    Copy everything between these comments into Insidash layout.
+    ════════════════════════════════════════════════════════════
+    -->
+
+    <!--
+        SERVER-SIDE INJECTION POINT
+        In production (Insidash .cshtml layout), replace this script block with:
+            <script>var TWT_COMPANY_ID = @(Session["CompanyID"] ?? "0");</script>
+        For local dev, hardcode a test CompanyID that has data in your DB.
+    -->
+    <script>
+        var TWT_COMPANY_ID  = 5;  // must match the company tied to TWT_SYNC_TOKEN
+        var TWT_SYNC_TOKEN  = 'twt_dev_token_E5E7568D-B344-4B94-9028-FA823D6299AF';  // dev only — same as TallySyncAgent App.config
+    </script>
+
+    <!-- Trigger button — place near existing "Ask AI" button in production -->
+    <div id="twt-trigger-btn" title="TalkWithTally — Ask your Tally data">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+        </svg>
+        <span>Tally AI</span>
+    </div>
+
+    <!-- Widget container — all screens live inside here -->
+    <div id="twt-widget" class="twt-hidden">
+
+        <!-- ── SCREEN 1: SPLASH (first-ever open) ─────────────────── -->
+        <div id="twt-screen-splash" class="twt-screen">
+            <div class="twt-splash-body">
+                <div class="twt-splash-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+                         stroke="#0d7377" stroke-width="1.5">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <h2 class="twt-splash-title">TalkWithTally</h2>
+                <p class="twt-splash-sub">Your Tally accounting data,<br>answered in plain English.</p>
+                <ul class="twt-splash-features">
+                    <li>📊 Ledger balances &amp; Trial Balance</li>
+                    <li>📈 Sales, payments &amp; vouchers</li>
+                    <li>👥 Debtor &amp; creditor summaries</li>
+                    <li>📦 Stock &amp; inventory queries</li>
+                </ul>
+                <button id="twt-splash-proceed" class="twt-btn-primary">
+                    Get Started &rarr;
+                </button>
+            </div>
+        </div>
+
+        <!-- ── SCREEN 2: NOT CONNECTED (agent not installed) ──────── -->
+        <div id="twt-screen-notconnected" class="twt-screen twt-hidden">
+            <div class="twt-notconnected-body">
+                <div class="twt-nc-icon">⚠️</div>
+                <h3>Tally Connector Not Found</h3>
+                <p>
+                    To use TalkWithTally, you need to install the
+                    <strong>Insidash Tally Connector</strong> on the Windows
+                    machine where Tally Prime is running.
+                </p>
+                <p class="twt-nc-steps-title">3 simple steps:</p>
+                <ol class="twt-nc-steps">
+                    <li>Download &amp; install the connector below</li>
+                    <li>Enter your <strong>Activation Key</strong> (get it from your Insidash admin)</li>
+                    <li>Keep Tally Prime open — data syncs automatically</li>
+                </ol>
+                <a id="twt-download-btn" href="#" target="_blank" class="twt-btn-primary">
+                    ⬇ Download Tally Connector
+                </a>
+                <button id="twt-nc-retry" class="twt-btn-secondary">
+                    I've installed it — Check Again
+                </button>
+            </div>
+        </div>
+
+        <!-- ── SCREEN 3: MAIN CHAT ────────────────────────────────── -->
+        <div id="twt-screen-chat" class="twt-screen twt-hidden">
+
+            <!-- Header -->
+            <div class="twt-header">
+                <div class="twt-header-left">
+                    <span class="twt-dot" id="twt-status-dot"></span>
+                    <span class="twt-header-title">TalkWithTally</span>
+                    <span class="twt-header-badge">BETA</span>
+                </div>
+                <div class="twt-header-right">
+                    <button id="twt-close-btn" class="twt-icon-btn" title="Close">✕</button>
+                </div>
+            </div>
+
+            <!-- Sync bar (below header) -->
+            <div class="twt-syncbar" id="twt-syncbar">
+                <span id="twt-sync-label">
+                    <svg class="twt-sync-icon" width="13" height="13" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                    <span id="twt-sync-text">Checking sync...</span>
+                </span>
+                <button id="twt-sync-now-btn" class="twt-syncnow-btn" title="Sync latest Tally data now">
+                    Sync Now
+                </button>
+            </div>
+
+            <!-- Sync success toast (hidden by default, drops from syncbar) -->
+            <div id="twt-sync-toast" class="twt-sync-toast twt-hidden">
+                ✓ Tally data synced successfully
+            </div>
+
+            <!-- Chat messages area -->
+            <div class="twt-chat-area" id="twt-chat-area">
+                <!-- Messages injected here by JS -->
+            </div>
+
+            <!-- Suggestion chips -->
+            <div class="twt-chips" id="twt-chips">
+                <!-- Chips injected here by JS from API -->
+            </div>
+
+            <!-- Input bar -->
+            <div class="twt-input-bar">
+                <input
+                    type="text"
+                    id="twt-input"
+                    class="twt-input"
+                    placeholder="Ask about your Tally data..."
+                    autocomplete="off"
+                    maxlength="300"
+                />
+                <button id="twt-send-btn" class="twt-send-btn" title="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="twt-footer-label">
+                Powered by Insidash AI &nbsp;|&nbsp; Tally Prime data
+            </div>
+
+        </div>
+        <!-- end screen-chat -->
+
+    </div>
+
+    <!--
+    ════════════════════════════════════════════════════════════
+    TWT WIDGET END
+    ════════════════════════════════════════════════════════════
+    -->
+
+    <!-- Vendor JS — load order is critical: jQuery first, then Bootstrap -->
+    <script src="js/vendor/jquery.min.js"></script>
+    <script src="js/vendor/bootstrap.bundle.min.js"></script>
+
+    <!-- TalkWithTally logic — always last -->
+    <!-- Created in Phase 4. File must exist (even empty) before opening in browser. -->
+    <script src="js/talkwithtally.js"></script>
+
+</body>
+</html>

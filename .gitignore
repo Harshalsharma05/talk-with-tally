@@ -1,0 +1,31 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Secrets & local config
+**/Web.config
+**/App.config
+**/appsettings.*.json
+!**/appsettings.example.json
+.env
+*.env
+
+# Installer / build artifacts
+installer_output/
+*.exe
+*.msi
+
+# Logs & temp data
+*.log
+sync-errors.log
+
+# Optional: raw Tally test XML (large/sensitive)
+bill_outstandings_raw.xml
+stock_items_raw.xml
+
+# OS / editor
+Thumbs.db
+.DS_Store
