@@ -104,9 +104,9 @@ namespace Insidash.BLL.Parsers
             List<object> ledgers = document.Descendants("LEDGER")
                 .Select(ledger => new
                 {
-                    Name = (string)ledger.Attribute("NAME"),
-                    Parent = (string)ledger.Element("PARENT"),
-                    ClosingBalance = (string)ledger.Element("CLOSINGBALANCE")
+                    Name = (string)ledger.Attribute("NAME") ?? (string)ledger.Attribute("Name"),
+                    Parent = (string)ledger.Element("PARENT") ?? (string)ledger.Element("Parent"),
+                    ClosingBalance = (string)ledger.Element("CLOSINGBALANCE") ?? (string)ledger.Element("ClosingBalance")
                 })
                 .Cast<object>()
                 .ToList();
@@ -126,11 +126,11 @@ namespace Insidash.BLL.Parsers
             List<object> vouchers = document.Descendants("VOUCHER")
                 .Select(voucher => new
                 {
-                    Date = (string)voucher.Element("DATE"),
-                    VchType = (string)voucher.Element("VOUCHERTYPENAME"),
-                    PartyName = (string)voucher.Element("PARTYNAME"),
-                    Amount = (string)voucher.Element("AMOUNT"),
-                    Narration = (string)voucher.Element("NARRATION")
+                    Date = (string)voucher.Element("DATE") ?? (string)voucher.Element("Date"),
+                    VchType = (string)voucher.Element("VOUCHERTYPENAME") ?? (string)voucher.Element("VoucherTypeName"),
+                    PartyName = (string)voucher.Element("PARTYNAME") ?? (string)voucher.Element("PartyName"),
+                    Amount = (string)voucher.Element("AMOUNT") ?? (string)voucher.Element("Amount"),
+                    Narration = (string)voucher.Element("NARRATION") ?? (string)voucher.Element("Narration")
                 })
                 .Cast<object>()
                 .ToList();
@@ -150,9 +150,9 @@ namespace Insidash.BLL.Parsers
             return document.Descendants("LEDGER")
                 .Select(l => new TallyLedgerDto
                 {
-                    Name = (string)l.Attribute("NAME") ?? string.Empty,
-                    Parent = (string)l.Element("PARENT") ?? string.Empty,
-                    ClosingBalance = ParseClosingBalance((string)l.Element("CLOSINGBALANCE"))
+                    Name = (string)l.Attribute("NAME") ?? (string)l.Attribute("Name") ?? string.Empty,
+                    Parent = (string)l.Element("PARENT") ?? (string)l.Element("Parent") ?? string.Empty,
+                    ClosingBalance = ParseClosingBalance((string)l.Element("CLOSINGBALANCE") ?? (string)l.Element("ClosingBalance"))
                 })
                 .ToList();
         }
@@ -164,12 +164,12 @@ namespace Insidash.BLL.Parsers
             return document.Descendants("VOUCHER")
                 .Select(v => new TallyVoucherDto
                 {
-                    VoucherID = (string)v.Element("GUID") ?? Guid.NewGuid().ToString(),
-                    Date = DateTime.TryParse((string)v.Element("DATE"), out DateTime d) ? d : DateTime.Today,
-                    VchType = (string)v.Element("VOUCHERTYPENAME") ?? string.Empty,
-                    PartyName = (string)v.Element("PARTYNAME") ?? string.Empty,
-                    Amount = ParseAmount((string)v.Element("AMOUNT")),
-                    Narration = (string)v.Element("NARRATION") ?? string.Empty
+                    VoucherID = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString(),
+                    Date = DateTime.TryParse((string)v.Element("DATE") ?? (string)v.Element("Date"), out DateTime d) ? d : DateTime.Today,
+                    VchType = (string)v.Element("VOUCHERTYPENAME") ?? (string)v.Element("VoucherTypeName") ?? string.Empty,
+                    PartyName = (string)v.Element("PARTYNAME") ?? (string)v.Element("PartyName") ?? string.Empty,
+                    Amount = ParseAmount((string)v.Element("AMOUNT") ?? (string)v.Element("Amount")),
+                    Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty
                 })
                 .ToList();
         }
@@ -235,13 +235,21 @@ namespace Insidash.BLL.Parsers
             string cleanXml = SanitizeXml(rawXml);
             XDocument document = XDocument.Parse(cleanXml);
             return document.Descendants("STOCKITEM")
-                .Select(s => new TallyStockItemDto
-                {
-                    Name = (string)s.Attribute("NAME") ?? (string)s.Element("NAME") ?? string.Empty,
-                    Parent = (string)s.Element("PARENT") ?? string.Empty,
-                    Unit = (string)s.Element("BASEUNITS") ?? string.Empty,
-                    ClosingQty = ParseDecimalSafe((string)s.Element("CLOSINGBALANCE")),
-                    ClosingValue = ParseDecimalSafe((string)s.Element("CLOSINGVALUE"))
+                .Select(s => {
+                    // Try uppercase first, then TitleCase
+                    string parent = (string)s.Element("PARENT") ?? (string)s.Element("Parent") ?? string.Empty;
+                    string unit = (string)s.Element("BASEUNITS") ?? (string)s.Element("BaseUnits") ?? string.Empty;
+                    string rawQty = (string)s.Element("CLOSINGBALANCE") ?? (string)s.Element("ClosingBalance");
+                    string rawValue = (string)s.Element("CLOSINGVALUE") ?? (string)s.Element("ClosingValue");
+
+                    return new TallyStockItemDto
+                    {
+                        Name = (string)s.Attribute("NAME") ?? (string)s.Attribute("Name") ?? (string)s.Element("NAME") ?? (string)s.Element("Name") ?? string.Empty,
+                        Parent = parent,
+                        Unit = unit,
+                        ClosingQty = ParseDecimalSafe(rawQty),
+                        ClosingValue = ParseDecimalSafe(rawValue)
+                    };
                 })
                 .ToList();
         }
@@ -254,23 +262,34 @@ namespace Insidash.BLL.Parsers
 
             foreach (var ledger in document.Descendants("LEDGER"))
             {
-                string partyName = (string)ledger.Attribute("NAME") ?? (string)ledger.Element("NAME") ?? string.Empty;
+                string partyName = (string)ledger.Attribute("NAME") ?? (string)ledger.Attribute("Name") ?? (string)ledger.Element("NAME") ?? (string)ledger.Element("Name") ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(partyName)) continue;
 
-                foreach (var bill in ledger.Descendants("BILLDETAILS.LIST"))
+                // Match both uppercase and TitleCase for BILLDETAILS.LIST / BillDetails.List
+                var billElements = ledger.Descendants("BILLDETAILS.LIST").Concat(ledger.Descendants("BillDetails.List"));
+
+                foreach (var bill in billElements)
                 {
-                    string billDateStr = (string)bill.Element("BILLDATE") ?? string.Empty;
+                    string billDateStr = (string)bill.Element("BILLDATE") ?? (string)bill.Element("BillDate") ?? string.Empty;
                     DateTime billDate = DateTime.TryParseExact(billDateStr, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime bd)
                         ? bd
                         : (DateTime.TryParse(billDateStr, out DateTime d) ? d : DateTime.Today);
 
-                    string billRef = (string)bill.Element("BILLREF") ?? string.Empty;
+                    string billRef = (string)bill.Element("BILLREF") ?? (string)bill.Element("BillRef") ?? string.Empty;
                     
-                    // Amount can be in BILLCLVAL or AMOUNT
-                    string rawAmt = (string)bill.Element("BILLCLVAL") ?? (string)bill.Element("AMOUNT") ?? "0";
+                    // Amount can be in BILLCLVAL, AMOUNT, or TitleCase variations
+                    string rawAmt = (string)bill.Element("BILLCLVAL") 
+                                 ?? (string)bill.Element("BillClVal") 
+                                 ?? (string)bill.Element("AMOUNT") 
+                                 ?? (string)bill.Element("Amount") 
+                                 ?? "0";
                     decimal amount = ParseAmount(rawAmt);
 
-                    string rawDueDate = (string)bill.Element("BILLDATEDUE") ?? (string)bill.Element("BILLDUEFROM") ?? string.Empty;
+                    string rawDueDate = (string)bill.Element("BILLDATEDUE") 
+                                     ?? (string)bill.Element("BillDateDue") 
+                                     ?? (string)bill.Element("BILLDUEFROM") 
+                                     ?? (string)bill.Element("BillDueFrom") 
+                                     ?? string.Empty;
                     DateTime? dueDate = null;
                     if (!string.IsNullOrWhiteSpace(rawDueDate))
                     {
