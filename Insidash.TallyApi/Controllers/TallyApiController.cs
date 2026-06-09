@@ -436,6 +436,45 @@ namespace Insidash.TallyApi.Controllers
             }
         }
 
+        [HttpGet]
+        [Route("my-activation-key")]
+        public IHttpActionResult GetOrCreateActivationKey()
+        {
+            int companyId = GetAuthenticatedCompanyId();
+
+            using (var db = new InsidashTallyContext())
+            {
+                // Return existing key if one already exists for this company
+                var existing = db.TallyActivationKeys
+                    .FirstOrDefault(k => k.CompanyID == companyId && k.IsActive);
+
+                if (existing != null)
+                {
+                    return Ok(new
+                    {
+                        activationKey = existing.ActivationKey,
+                        isActivated   = existing.IsActivated,
+                        activatedAt   = existing.ActivatedAt
+                    });
+                }
+
+                // No key exists yet — auto-generate one via stored procedure
+                var result = db.Database.SqlQuery<ActivationKeyResult>(
+                    "EXEC sp_GenerateTallyActivationKey @p0", companyId)
+                    .FirstOrDefault();
+
+                if (result == null)
+                    return InternalServerError(new Exception("Failed to generate activation key."));
+
+                return Ok(new
+                {
+                    activationKey = result.ActivationKey,
+                    isActivated   = false,
+                    activatedAt   = (DateTime?)null
+                });
+            }
+        }
+
         private void UpsertSyncState(int companyId, string apiDataType, int recordCount, string status = "Success")
         {
             string dataType;
@@ -644,5 +683,11 @@ namespace Insidash.TallyApi.Controllers
     {
         public int CompanyId { get; set; }
         public string Message { get; set; }
+    }
+
+    public class ActivationKeyResult
+    {
+        public string ActivationKey { get; set; }
+        public int    CompanyID     { get; set; }
     }
 }

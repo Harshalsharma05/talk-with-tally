@@ -74,6 +74,19 @@
     overflow: hidden;
     animation: twt-slide-up 0.25s ease;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Resizability & Sizing Constraints */
+    resize: horizontal;          
+    min-width: 360px;            
+    max-width: 90vw;             
+
+    /* ── SHIFT RESIZER TO BOTTOM-LEFT ── */
+    direction: rtl;              /* Moves native drag handle to the bottom-left edge */
+}
+
+/* ── Restore normal alignment for internal elements ─────────── */
+#twt-widget > * {
+    direction: ltr;              /* Forces all children to render left-to-right normally */
 }
 
 @keyframes twt-slide-up {
@@ -396,7 +409,8 @@
 }
 
 .twt-bubble {
-    max-width: 80%;
+    max-width: 100%;            /* CHANGED from 80% to allow full bubble-column width */
+    width: fit-content;         /* Automatically wraps around tight content */
     padding: 10px 13px;
     border-radius: 14px;
     font-size: 13.5px;
@@ -405,7 +419,8 @@
     background: var(--twt-ai-bubble);
     box-shadow: 0 1px 4px rgba(0,0,0,0.07);
     border-bottom-left-radius: 4px;
-    word-break: break-word;
+    word-break: break-word;     /* Fallback wrapping */
+    overflow-wrap: anywhere;    /* High compatibility word wrapping */
 }
 
 .twt-msg-row.user .twt-bubble {
@@ -423,6 +438,7 @@
     margin-top: 8px;
     border-radius: 6px;
     overflow: hidden;
+    table-layout: auto;         /* Allow columns to size intelligently */
 }
 
 .twt-bubble .twt-response-table th {
@@ -440,6 +456,8 @@
     padding: 6px 10px;
     border-bottom: 1px solid #f0f4f4;
     color: var(--twt-text);
+    word-break: normal;         /* Prevents breaking on single characters */
+    white-space: normal;        /* Allows text to wrap normally inside cell bounds */
 }
 
 .twt-bubble .twt-response-table tr:last-child td { border-bottom: none; }
@@ -571,3 +589,84 @@
     background: var(--twt-white);
     flex-shrink: 0;
 }
+
+/* ── Activation Key Box ──────────────────────────────────── */
+.twt-activation-box {
+    width: 100%;
+    background: var(--twt-primary-light);
+    border: 1.5px solid rgba(13, 115, 119, 0.25);
+    border-radius: var(--twt-radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+.twt-activation-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--twt-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.twt-activation-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.twt-activation-key-display {
+    flex: 1;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--twt-primary-dark);
+    letter-spacing: 2px;
+    word-break: break-all;
+}
+
+.twt-copy-btn {
+    background: var(--twt-primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.twt-copy-btn:hover { background: var(--twt-primary-dark); }
+
+.twt-activation-hint {
+    font-size: 11px;
+    color: var(--twt-text-muted);
+    line-height: 1.4;
+}
+
+/* ── History Divider ─────────────────────────────────────── */
+.twt-history-divider {
+    text-align: center;
+    font-size: 11px;
+    color: #a0aec0;
+    padding: 6px 0 10px;
+    position: relative;
+}
+
+.twt-history-divider::before,
+.twt-history-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 28%;
+    height: 1px;
+    background: #e2e8ea;
+}
+
+.twt-history-divider::before { left: 8px; }
+.twt-history-divider::after  { right: 8px; }
