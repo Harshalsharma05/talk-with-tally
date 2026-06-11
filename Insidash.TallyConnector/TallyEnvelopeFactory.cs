@@ -26,7 +26,6 @@ namespace Insidash.TallyConnector
       }
       else if (string.Equals(dataType, "Voucher", StringComparison.OrdinalIgnoreCase))
       {
-        // Sync vouchers starting from 2000-01-01 to capture full daybook history
         string fromStr = "20000101";
         string toStr = DateTime.Now.AddDays(1).ToString("yyyyMMdd");
 
@@ -34,16 +33,29 @@ namespace Insidash.TallyConnector
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>Day Book</ID>
+    <TYPE>Collection</TYPE>
+    <ID>MyVoucherCollection</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE>{fromStr}</SVFROMDATE>
-        <SVTODATE>{toStr}</SVTODATE>
+        <SVFROMDATE TYPE=""Date"">{fromStr}</SVFROMDATE>
+        <SVTODATE TYPE=""Date"">{toStr}</SVTODATE>
       </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""MyVoucherCollection"">
+            <TYPE>Voucher</TYPE>
+            <NATIVEMETHOD>DATE</NATIVEMETHOD>
+            <NATIVEMETHOD>VOUCHERTYPENAME</NATIVEMETHOD>
+            <NATIVEMETHOD>PARTYLEDGERNAME</NATIVEMETHOD>
+            <NATIVEMETHOD>AMOUNT</NATIVEMETHOD>
+            <NATIVEMETHOD>NARRATION</NATIVEMETHOD>
+            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>";

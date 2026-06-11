@@ -25,6 +25,7 @@ sync-errors.log
 # Optional: raw Tally test XML (large/sensitive)
 bill_outstandings_raw.xml
 stock_items_raw.xml
+vouchers_raw.xml
 
 # OS / editor
 Thumbs.db

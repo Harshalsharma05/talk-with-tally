@@ -8,8 +8,8 @@ namespace Insidash.TallyConnector
 {
     public class ConnectorConfig
     {
-        public string SyncToken      { get; set; } = "twt_dev_token_E5E7568D-B344-4B94-9028-FA823D6299AF";
-        public int    CompanyID      { get; set; } = 5;
+        public string SyncToken      { get; set; } = "twt_3a1d4601d34f47db9552bd019a2c45c7";
+        public int    CompanyID      { get; set; } = 10892;
         public string TallyHost      { get; set; } = "localhost";
         public string TallyPort      { get; set; } = "9000";
         public int    SyncIntervalMs { get; set; } = 300000;

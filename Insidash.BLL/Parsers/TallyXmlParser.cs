@@ -44,8 +44,8 @@ namespace Insidash.BLL.Parsers
             var buffer = new StringBuilder(xml.Length);
             foreach (char c in xml)
             {
-                if (c == 0x9 || c == 0xA || c == 0xD || 
-                    (c >= 0x20 && c <= 0xD7FF) || 
+                if (c == 0x9 || c == 0xA || c == 0xD ||
+                    (c >= 0x20 && c <= 0xD7FF) ||
                     (c >= 0xE000 && c <= 0xFFFD) ||
                     char.IsSurrogate(c))
                 {
@@ -83,10 +83,10 @@ namespace Insidash.BLL.Parsers
         public decimal ParseAmount(string rawVal)
         {
             if (string.IsNullOrWhiteSpace(rawVal)) return 0;
-            
+
             // Remove commas from amount strings
             string text = rawVal.Trim().Replace(",", "");
-            
+
             bool isNegative = text.StartsWith("-");
             if (isNegative) text = text.Substring(1).Trim();
 
@@ -162,14 +162,30 @@ namespace Insidash.BLL.Parsers
             string cleanXml = SanitizeXml(rawXml);
             XDocument document = XDocument.Parse(cleanXml);
             return document.Descendants("VOUCHER")
-                .Select(v => new TallyVoucherDto
+                .Select(v =>
                 {
-                    VoucherID = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString(),
-                    Date = DateTime.TryParse((string)v.Element("DATE") ?? (string)v.Element("Date"), out DateTime d) ? d : DateTime.Today,
-                    VchType = (string)v.Element("VOUCHERTYPENAME") ?? (string)v.Element("VoucherTypeName") ?? string.Empty,
-                    PartyName = (string)v.Element("PARTYNAME") ?? (string)v.Element("PartyName") ?? string.Empty,
-                    Amount = ParseAmount((string)v.Element("AMOUNT") ?? (string)v.Element("Amount")),
-                    Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty
+                    // ── Precise Date Parsing ──
+                    string rawDate = (string)v.Element("DATE") ?? (string)v.Element("Date") ?? string.Empty;
+                    DateTime voucherDate = DateTime.TryParseExact(rawDate, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime parsedDate)
+                        ? parsedDate
+                        : (DateTime.TryParse(rawDate, out DateTime fallbackDate) ? fallbackDate : DateTime.Today);
+
+                    return new TallyVoucherDto
+                    {
+                        VoucherID = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString(),
+                        Date = voucherDate,
+                        VchType = (string)v.Element("VOUCHERTYPENAME") ?? (string)v.Element("VoucherTypeName") ?? string.Empty,
+
+                        // ── Precise Party Name Mapping ──
+                        PartyName = (string)v.Element("PARTYLEDGERNAME")
+                                 ?? (string)v.Element("PartyLedgerName")
+                                 ?? (string)v.Element("PARTYNAME")
+                                 ?? (string)v.Element("PartyName")
+                                 ?? string.Empty,
+
+                        Amount = ParseAmount((string)v.Element("AMOUNT") ?? (string)v.Element("Amount")),
+                        Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty
+                    };
                 })
                 .ToList();
         }
@@ -235,9 +251,11 @@ namespace Insidash.BLL.Parsers
             string cleanXml = SanitizeXml(rawXml);
             XDocument document = XDocument.Parse(cleanXml);
             return document.Descendants("STOCKITEM")
-                .Select(s => {
+                .Select(s =>
+                {
                     // Try uppercase first, then TitleCase
                     string parent = (string)s.Element("PARENT") ?? (string)s.Element("Parent") ?? string.Empty;
+                    if (parent.StartsWith("\x04")) parent = parent.Substring(1).Trim();
                     string unit = (string)s.Element("BASEUNITS") ?? (string)s.Element("BaseUnits") ?? string.Empty;
                     string rawQty = (string)s.Element("CLOSINGBALANCE") ?? (string)s.Element("ClosingBalance");
                     string rawValue = (string)s.Element("CLOSINGVALUE") ?? (string)s.Element("ClosingValue");
@@ -248,7 +266,7 @@ namespace Insidash.BLL.Parsers
                         Parent = parent,
                         Unit = unit,
                         ClosingQty = ParseDecimalSafe(rawQty),
-                        ClosingValue = ParseDecimalSafe(rawValue)
+                        ClosingValue = Math.Abs(ParseDecimalSafe(rawValue)) // to ensure value is always positive, as it represents total value of stock on hand regardless of credit/debit nature
                     };
                 })
                 .ToList();
@@ -276,19 +294,19 @@ namespace Insidash.BLL.Parsers
                         : (DateTime.TryParse(billDateStr, out DateTime d) ? d : DateTime.Today);
 
                     string billRef = (string)bill.Element("BILLREF") ?? (string)bill.Element("BillRef") ?? string.Empty;
-                    
+
                     // Amount can be in BILLCLVAL, AMOUNT, or TitleCase variations
-                    string rawAmt = (string)bill.Element("BILLCLVAL") 
-                                 ?? (string)bill.Element("BillClVal") 
-                                 ?? (string)bill.Element("AMOUNT") 
-                                 ?? (string)bill.Element("Amount") 
+                    string rawAmt = (string)bill.Element("BILLCLVAL")
+                                 ?? (string)bill.Element("BillClVal")
+                                 ?? (string)bill.Element("AMOUNT")
+                                 ?? (string)bill.Element("Amount")
                                  ?? "0";
                     decimal amount = ParseAmount(rawAmt);
 
-                    string rawDueDate = (string)bill.Element("BILLDATEDUE") 
-                                     ?? (string)bill.Element("BillDateDue") 
-                                     ?? (string)bill.Element("BILLDUEFROM") 
-                                     ?? (string)bill.Element("BillDueFrom") 
+                    string rawDueDate = (string)bill.Element("BILLDATEDUE")
+                                     ?? (string)bill.Element("BillDateDue")
+                                     ?? (string)bill.Element("BILLDUEFROM")
+                                     ?? (string)bill.Element("BillDueFrom")
                                      ?? string.Empty;
                     DateTime? dueDate = null;
                     if (!string.IsNullOrWhiteSpace(rawDueDate))

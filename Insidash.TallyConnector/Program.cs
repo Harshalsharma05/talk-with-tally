@@ -15,7 +15,15 @@ namespace Insidash.TallyConnector
             // Detect launch context:
             // - Environment.UserInteractive is FALSE when called by Windows Service Control Manager (SCM).
             // - Environment.UserInteractive is TRUE when run by a user (double-click, command line, startup folder).
-            // LocalConfig.Save(new ConnectorConfig());
+            LocalConfig.Save(new ConnectorConfig());
+
+            var config = LocalConfig.Load();
+            System.IO.File.WriteAllText(
+            System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "InsidashTallyConnector", "debug.txt"),
+            "TOKEN: " + config.SyncToken + "\r\nCOMPANY: " + config.CompanyID);
+
             if (!Environment.UserInteractive)
             {
                 // Run as a background Windows Service

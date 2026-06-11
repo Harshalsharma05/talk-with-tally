@@ -57,6 +57,7 @@ namespace Insidash.TallyApi.Controllers
 
             if (string.Equals(payload.DataType, "vouchers", StringComparison.OrdinalIgnoreCase))
             {
+                try { System.IO.File.WriteAllText(@"c:\AAA_STUDY\Internship_Tasks\TalkWithTally\vouchers_raw.xml", payload.RawXml); } catch { }
                 var rawDtos = _parser.ParseVouchersToDto(payload.RawXml);
                 var dbVouchers = rawDtos.Select(dto => new TallyVoucher
                 {
@@ -542,48 +543,48 @@ namespace Insidash.TallyApi.Controllers
 
         private string TrySuggestSimilarName(string originalName, int companyId)
         {
-            if (string.IsNullOrWhiteSpace(originalName)) return null;
+            // if (string.IsNullOrWhiteSpace(originalName)) return null;
 
-            var words = originalName.Split(' ', ',', '.', ';')
-                .Select(w => w.Trim())
-                .Where(w => w.Length >= 3 && !IsCommonKeyword(w))
-                .ToList();
+            // var words = originalName.Split(' ', ',', '.', ';')
+            //     .Select(w => w.Trim())
+            //     .Where(w => w.Length >= 3 && !IsCommonKeyword(w))
+            //     .ToList();
 
-            if (!words.Any()) return null;
+            // if (!words.Any()) return null;
 
-            string connStr = ConfigurationManager.ConnectionStrings["InsidashTallyDbReadOnly"].ConnectionString;
+            // string connStr = ConfigurationManager.ConnectionStrings["InsidashTallyDbReadOnly"].ConnectionString;
 
-            using (var conn = new SqlConnection(connStr))
-            {
-                conn.Open();
-                foreach (var word in words)
-                {
-                    using (var cmd = new SqlCommand(@"
-                        SELECT TOP 3 DisplayName FROM Customer
-                        WHERE CompanyID = @cid AND IsDelete = 0
-                          AND DisplayName LIKE @pattern", conn))
-                    {
-                        cmd.Parameters.AddWithValue("@cid", companyId);
-                        cmd.Parameters.AddWithValue("@pattern", "%" + word + "%");
+            // using (var conn = new SqlConnection(connStr))
+            // {
+            //     conn.Open();
+            //     foreach (var word in words)
+            //     {
+            //         using (var cmd = new SqlCommand(@"
+            //             SELECT TOP 3 DisplayName FROM Customer
+            //             WHERE CompanyID = @cid AND IsDelete = 0
+            //               AND DisplayName LIKE @pattern", conn))
+            //         {
+            //             cmd.Parameters.AddWithValue("@cid", companyId);
+            //             cmd.Parameters.AddWithValue("@pattern", "%" + word + "%");
 
-                        var names = new List<string>();
-                        using (var reader = cmd.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                names.Add(reader.GetString(0));
-                            }
-                        }
+            //             var names = new List<string>();
+            //             using (var reader = cmd.ExecuteReader())
+            //             {
+            //                 while (reader.Read())
+            //                 {
+            //                     names.Add(reader.GetString(0));
+            //                 }
+            //             }
 
-                        if (names.Any())
-                        {
-                            return $"📭 No data found. Did you mean: {string.Join(", ", names)}?";
-                        }
-                    }
-                }
-            }
+            //             if (names.Any())
+            //             {
+            //                 return $"📭 No data found. Did you mean: {string.Join(", ", names)}?";
+            //             }
+            //         }
+            //     }
+            // }
 
-            return null;
+            return null; // CRM Tables removed from Tally Scope
         }
 
         private bool IsCommonKeyword(string word)
