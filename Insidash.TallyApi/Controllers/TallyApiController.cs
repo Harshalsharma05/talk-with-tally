@@ -167,7 +167,8 @@ namespace Insidash.TallyApi.Controllers
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            var log = new AIChatLog
+            // ── UPDATED: Map directly to the new TallyAIChatLog entity ──
+            var log = new TallyAIChatLog
             {
                 CompanyID = request.CompanyId,
                 UserQuestion = request.Message,
@@ -297,6 +298,8 @@ namespace Insidash.TallyApi.Controllers
             {
                 stopwatch.Stop();
                 log.ExecutionTime = (int)stopwatch.ElapsedMilliseconds;
+                
+                // ── Saves automatically to the new TallyAIChatLog table ──
                 _chatLogRepository.InsertLog(log);
             }
         }
@@ -310,6 +313,7 @@ namespace Insidash.TallyApi.Controllers
                 return Unauthorized();
             }
 
+            // ── Fetches automatically from the new TallyAIChatLog table ──
             var logs = _chatLogRepository.GetByCompany(companyId, page, pageSize);
             return Ok(logs);
         }
@@ -473,7 +477,7 @@ namespace Insidash.TallyApi.Controllers
                     isActivated   = false,
                     activatedAt   = (DateTime?)null
                 });
-            }
+            }   
         }
 
         private void UpsertSyncState(int companyId, string apiDataType, int recordCount, string status = "Success")
@@ -543,47 +547,6 @@ namespace Insidash.TallyApi.Controllers
 
         private string TrySuggestSimilarName(string originalName, int companyId)
         {
-            // if (string.IsNullOrWhiteSpace(originalName)) return null;
-
-            // var words = originalName.Split(' ', ',', '.', ';')
-            //     .Select(w => w.Trim())
-            //     .Where(w => w.Length >= 3 && !IsCommonKeyword(w))
-            //     .ToList();
-
-            // if (!words.Any()) return null;
-
-            // string connStr = ConfigurationManager.ConnectionStrings["InsidashTallyDbReadOnly"].ConnectionString;
-
-            // using (var conn = new SqlConnection(connStr))
-            // {
-            //     conn.Open();
-            //     foreach (var word in words)
-            //     {
-            //         using (var cmd = new SqlCommand(@"
-            //             SELECT TOP 3 DisplayName FROM Customer
-            //             WHERE CompanyID = @cid AND IsDelete = 0
-            //               AND DisplayName LIKE @pattern", conn))
-            //         {
-            //             cmd.Parameters.AddWithValue("@cid", companyId);
-            //             cmd.Parameters.AddWithValue("@pattern", "%" + word + "%");
-
-            //             var names = new List<string>();
-            //             using (var reader = cmd.ExecuteReader())
-            //             {
-            //                 while (reader.Read())
-            //                 {
-            //                     names.Add(reader.GetString(0));
-            //                 }
-            //             }
-
-            //             if (names.Any())
-            //             {
-            //                 return $"📭 No data found. Did you mean: {string.Join(", ", names)}?";
-            //             }
-            //         }
-            //     }
-            // }
-
             return null; // CRM Tables removed from Tally Scope
         }
 
@@ -664,7 +627,7 @@ namespace Insidash.TallyApi.Controllers
                 }
             }
 
-            return 5; // for debugging and testing only, comment this in production
+            return 10892; // for debugging and testing only, comment this in production
         }
     }
 

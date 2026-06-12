@@ -20,6 +20,7 @@ namespace Insidash.DAL.Context
         public DbSet<TallyCompanyConfig> TallyCompanyConfigs { get; set; }
         public DbSet<TallySnapshot> TallySnapshots { get; set; }
         public DbSet<AIChatLog> AIChatLogs { get; set; }
+        public DbSet<TallyAIChatLog> TallyAIChatLogs { get; set; } // NEW: Dedicated Tally Chat Log DbSet
         public DbSet<TallyLedger> TallyLedgers { get; set; }
         public DbSet<TallyVoucher> TallyVouchers { get; set; }
         public DbSet<TallySyncState> TallySyncStates { get; set; }
@@ -39,6 +40,10 @@ namespace Insidash.DAL.Context
 
             modelBuilder.Entity<AIChatLog>().ToTable("AIChatLog");
             modelBuilder.Entity<AIChatLog>().HasKey(l => l.LogID);
+
+            // NEW: Table and Primary Key mapping for TallyAIChatLog
+            modelBuilder.Entity<TallyAIChatLog>().ToTable("TallyAIChatLog");
+            modelBuilder.Entity<TallyAIChatLog>().HasKey(l => l.LogID);
 
             modelBuilder.Entity<TallyLedger>().ToTable("TallyLedger");
             modelBuilder.Entity<TallyLedger>().HasKey(l => l.LedgerID);

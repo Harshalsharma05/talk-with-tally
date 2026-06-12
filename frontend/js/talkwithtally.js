@@ -49,7 +49,7 @@ const TWT = (function ($) {
     console.warn(
       "TWT: TWT_COMPANY_ID is not defined globally. Defaulting to 5.",
     );
-    return 5;
+    return 10892;
   }
 
   // ── API helper (sends dev sync token for local testing) ────
@@ -58,6 +58,12 @@ const TWT = (function ($) {
     if (typeof TWT_SYNC_TOKEN !== "undefined" && TWT_SYNC_TOKEN) {
       headers["X-Sync-Token"] = TWT_SYNC_TOKEN;
     }
+
+    // NEW — always send CompanyID for dev testing
+    if (typeof TWT_COMPANY_ID !== 'undefined') {
+        headers['X-Company-ID'] = TWT_COMPANY_ID;
+    }
+    
     return $.ajax(
       $.extend({}, options, {
         headers: headers,

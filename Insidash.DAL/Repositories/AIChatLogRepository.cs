@@ -8,26 +8,27 @@ namespace Insidash.DAL.Repositories
 {
     public class AIChatLogRepository : IAIChatLogRepository
     {
-        public void InsertLog(AIChatLog log)
+        public void InsertLog(TallyAIChatLog log)
         {
             if (log == null) throw new ArgumentNullException(nameof(log));
 
             using (var ctx = new InsidashTallyContext())
             {
-                // If LogID is zero, assume DB will generate identity (if configured)
-                ctx.AIChatLogs.Add(log);
+                // Writes strictly to the dedicated TallyAIChatLog table
+                ctx.TallyAIChatLogs.Add(log);
                 ctx.SaveChanges();
             }
         }
 
-        public IEnumerable<AIChatLog> GetByCompany(int companyId, int page = 1, int pageSize = 20)
+        public IEnumerable<TallyAIChatLog> GetByCompany(int companyId, int page = 1, int pageSize = 20)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
 
             using (var ctx = new InsidashTallyContext())
             {
-                return ctx.AIChatLogs
+                // Reads strictly from the dedicated TallyAIChatLog table
+                return ctx.TallyAIChatLogs
                     .Where(l => l.CompanyID == companyId)
                     .OrderByDescending(l => l.CreatedDate)
                     .Skip((page - 1) * pageSize)
