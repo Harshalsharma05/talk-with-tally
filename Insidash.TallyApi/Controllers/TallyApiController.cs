@@ -58,7 +58,11 @@ namespace Insidash.TallyApi.Controllers
             if (string.Equals(payload.DataType, "vouchers", StringComparison.OrdinalIgnoreCase))
             {
                 try { System.IO.File.WriteAllText(@"c:\AAA_STUDY\Internship_Tasks\TalkWithTally\vouchers_raw.xml", payload.RawXml); } catch { }
+
+                // 1. Parse raw XML to our extended DTOs (which now extract nested item blocks)
                 var rawDtos = _parser.ParseVouchersToDto(payload.RawXml);
+
+                // 2. Map DTO models over to the parent domain entities while structuralizing child lists
                 var dbVouchers = rawDtos.Select(dto => new TallyVoucher
                 {
                     VoucherID = dto.VoucherID,
@@ -66,10 +70,24 @@ namespace Insidash.TallyApi.Controllers
                     VchType = dto.VchType,
                     PartyName = dto.PartyName,
                     Amount = dto.Amount,
-                    Narration = dto.Narration
+                    Narration = dto.Narration,
+
+                    // ── NEW STEP: Map child inventory line items over to the parent TallyVoucher entity ──
+                    InventoryItems = dto.InventoryItems != null
+                        ? dto.InventoryItems.Select(itemDto => new TallyVoucherInventoryItem
+                        {
+                            VoucherID = itemDto.VoucherID,
+                            StockItemName = itemDto.StockItemName,
+                            Quantity = itemDto.Quantity,
+                            Rate = itemDto.Rate,
+                            Amount = itemDto.Amount
+                        }).ToList()
+                        : new List<TallyVoucherInventoryItem>()
                 }).ToList();
 
+                // 3. Pass the structural records downstream (The updated repo will process both headers and lines atomically)
                 _relationalRepo.SaveVouchers(companyId, dbVouchers);
+
                 UpsertSyncState(companyId, "Vouchers", dbVouchers.Count);
 
                 return Ok(new
@@ -298,7 +316,7 @@ namespace Insidash.TallyApi.Controllers
             {
                 stopwatch.Stop();
                 log.ExecutionTime = (int)stopwatch.ElapsedMilliseconds;
-                
+
                 // ── Saves automatically to the new TallyAIChatLog table ──
                 _chatLogRepository.InsertLog(log);
             }
@@ -458,8 +476,8 @@ namespace Insidash.TallyApi.Controllers
                     return Ok(new
                     {
                         activationKey = existing.ActivationKey,
-                        isActivated   = existing.IsActivated,
-                        activatedAt   = existing.ActivatedAt
+                        isActivated = existing.IsActivated,
+                        activatedAt = existing.ActivatedAt
                     });
                 }
 
@@ -474,10 +492,10 @@ namespace Insidash.TallyApi.Controllers
                 return Ok(new
                 {
                     activationKey = result.ActivationKey,
-                    isActivated   = false,
-                    activatedAt   = (DateTime?)null
+                    isActivated = false,
+                    activatedAt = (DateTime?)null
                 });
-            }   
+            }
         }
 
         private void UpsertSyncState(int companyId, string apiDataType, int recordCount, string status = "Success")
@@ -652,6 +670,6 @@ namespace Insidash.TallyApi.Controllers
     public class ActivationKeyResult
     {
         public string ActivationKey { get; set; }
-        public int    CompanyID     { get; set; }
+        public int CompanyID { get; set; }
     }
 }

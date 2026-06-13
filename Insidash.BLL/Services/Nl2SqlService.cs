@@ -35,19 +35,28 @@ namespace Insidash.BLL.Services
             - Date (DATE) - Transaction date
             - VchType (NVARCHAR(100)) - Voucher type (e.g. Sales, Payment, Receipt)
             - PartyName (NVARCHAR(255)) - Associated ledger/party name
-            - Amount (DECIMAL(18,2)) - Transaction Amount
+            - Amount (DECIMAL(18,2)) - Total transaction amount/voucher header total
             - Narration (NVARCHAR(MAX)) - Remarks
 
-            3. Table 'TallyStockItem':
+            3. Table 'TallyVoucherInventoryItem':
+            - InventoryLineItemID (INT, PRIMARY KEY IDENTITY)
+            - VoucherID (NVARCHAR(50)) - Foreign Key to TallyVoucher.VoucherID
+            - CompanyID (INT) - Filter queries by CompanyID = {companyId}
+            - StockItemName (NVARCHAR(255)) - Text name of the individual product/item transacted
+            - Quantity (DECIMAL(18,4)) - Quantity of item sold or purchased in this specific transaction line
+            - Rate (DECIMAL(18,2)) - Rate per unit of the item
+            - Amount (DECIMAL(18,2)) - Line total value for this item (Quantity * Rate)
+
+            4. Table 'TallyStockItem':
             - StockItemID (NVARCHAR(50), PRIMARY KEY)
             - CompanyID (INT) - Filter queries by CompanyID = {companyId}
-            - Name (NVARCHAR(255)) - Product/Stock item name
-            - Parent (NVARCHAR(255)) - Stock group name
+            - Name (NVARCHAR(255)) - Product/Stock item master name
+            - Parent (NVARCHAR(255)) - Stock group name (e.g., Electronics, Cables)
             - Unit (NVARCHAR(50)) - Unit of measure (e.g. Nos, Pcs, Kgs)
-            - ClosingQty (DECIMAL(18,4)) - Current stock quantity
-            - ClosingValue (DECIMAL(18,2)) - Valuation of closing quantity
+            - ClosingQty (DECIMAL(18,4)) - Total current warehouse stock quantity
+            - ClosingValue (DECIMAL(18,2)) - Asset valuation of closing quantity
 
-            4. Table 'TallyBillOutstanding':
+            5. Table 'TallyBillOutstanding':
             - BillID (NVARCHAR(50), PRIMARY KEY)
             - CompanyID (INT) - Filter queries by CompanyID = {companyId}
             - PartyName (NVARCHAR(255)) - Customer/Sundry Debtor name
@@ -56,20 +65,24 @@ namespace Insidash.BLL.Services
             - Amount (DECIMAL(18,2)) - Outstanding amount
             - DueDate (DATE) - Bill payment due date
 
-RULES:
-- Respond ONLY with the executable SQL Query inside a markdown code block: ```sql <sql query here> ```. Do not add explanations.
-- ALWAYS filter the queries by CompanyID = {companyId}.
-- Be careful with the balance signs for TallyLedger: Debit balances (negative) vs. Credit balances (positive).
-- Keep queries simple, optimized, and read-only. Only use SELECT statements.
-- Stock/Inventory queries -> TallyStockItem (use ClosingQty for quantities and ClosingValue for valuation).
-- Outstanding bills, aging, or receivables queries -> TallyBillOutstanding.
-- Outstanding bills older than N days -> DATEDIFF(DAY, BillDate, GETDATE()) > N.
+            RULES:
+            - Respond ONLY with the executable SQL Query inside a markdown code block: ```sql <sql query here> ```. Do not add explanations.
+            - ALWAYS filter the queries by CompanyID = {companyId} on every joined table to maintain strict multi-tenant isolation.
+            - Be careful with the balance signs for TallyLedger: Debit balances (negative) vs. Credit balances (positive).
+            - Keep queries simple, optimized, and read-only. Only use SELECT statements.
+            - Master Stock/Warehouse Inventory queries -> TallyStockItem (use ClosingQty for current stock levels and ClosingValue for valuation metrics).
+            - Voucher Transaction Line Items / Product Sales & Purchase Breakdown -> TallyVoucherInventoryItem.
+            - Outstanding bills, aging, or receivables queries -> TallyBillOutstanding.
+            - Outstanding bills older than N days -> DATEDIFF(DAY, BillDate, GETDATE()) > N.
 
-SUBQUERY RULES:
-- NEVER reference a table alias from the outer query inside a subquery.
-- In subqueries, always re-JOIN the required table.
-- Prefer LEFT JOIN in the main query over subqueries wherever possible.
-- If you need Invoice data and Payment data together, use LEFT JOIN PaymentMap ON PaymentMap.InvoiceID = Invoice.InvoiceID directly — do not nest.";
+            CRITICAL RELATIONAL JOIN RULES:
+            1. To fetch items transacted inside an invoice/voucher, JOIN TallyVoucher with TallyVoucherInventoryItem on target.VoucherID = source.VoucherID AND target.CompanyID = source.CompanyID.
+            2. To link individual voucher item lines to master stock properties (like parent group categories or unit definitions), JOIN TallyVoucherInventoryItem with TallyStockItem on TallyVoucherInventoryItem.StockItemName = TallyStockItem.Name AND TallyVoucherInventoryItem.CompanyID = TallyStockItem.CompanyID.
+
+            SUBQUERY RULES:
+            - NEVER reference a table alias from the outer query inside a subquery.
+            - In subqueries, always re-JOIN the required table.
+            - Prefer LEFT JOIN in the main query over subqueries wherever possible.";
 
             var result = await _aiService.ChatAsync(systemPrompt, userQuestion);
             if (!result.Success)

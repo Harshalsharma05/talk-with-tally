@@ -28,6 +28,7 @@ namespace Insidash.DAL.Context
         public DbSet<TallyStockItem> TallyStockItems { get; set; }
         public DbSet<TallyBillOutstanding> TallyBillOutstandings { get; set; }
         public DbSet<TallyActivationKey> TallyActivationKeys { get; set; }
+        public DbSet<TallyVoucherInventoryItem> VoucherInventoryItems { get; set; }
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)
         {
@@ -65,6 +66,12 @@ namespace Insidash.DAL.Context
 
             modelBuilder.Entity<TallyActivationKey>().ToTable("TallyActivationKey");
             modelBuilder.Entity<TallyActivationKey>().HasKey(k => k.KeyID);
+
+            modelBuilder.Entity<TallyVoucherInventoryItem>()
+            .HasRequired(p => p.Voucher)
+            .WithMany()
+            .HasForeignKey(p => p.VoucherID)
+            .WillCascadeOnDelete(true);
 
             base.OnModelCreating(modelBuilder);
         }

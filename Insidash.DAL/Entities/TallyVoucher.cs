@@ -1,5 +1,5 @@
 using System;
-
+using System.Collections.Generic;
 namespace Insidash.DAL.Entities
 {
     public class TallyVoucher
@@ -12,5 +12,6 @@ namespace Insidash.DAL.Entities
         public decimal Amount { get; set; }
         public string Narration { get; set; }
         public DateTime SyncedAt { get; set; }
+        public virtual List<TallyVoucherInventoryItem> InventoryItems { get; set; } = new List<TallyVoucherInventoryItem>();
     }
 }

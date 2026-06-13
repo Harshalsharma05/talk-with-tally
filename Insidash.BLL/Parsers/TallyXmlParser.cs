@@ -161,6 +161,7 @@ namespace Insidash.BLL.Parsers
         {
             string cleanXml = SanitizeXml(rawXml);
             XDocument document = XDocument.Parse(cleanXml);
+
             return document.Descendants("VOUCHER")
                 .Select(v =>
                 {
@@ -170,9 +171,12 @@ namespace Insidash.BLL.Parsers
                         ? parsedDate
                         : (DateTime.TryParse(rawDate, out DateTime fallbackDate) ? fallbackDate : DateTime.Today);
 
-                    return new TallyVoucherDto
+                    // Determine the stable Voucher ID to tie line items accurately
+                    string voucherGuid = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString();
+
+                    var voucherDto = new TallyVoucherDto
                     {
-                        VoucherID = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString(),
+                        VoucherID = voucherGuid,
                         Date = voucherDate,
                         VchType = (string)v.Element("VOUCHERTYPENAME") ?? (string)v.Element("VoucherTypeName") ?? string.Empty,
 
@@ -184,10 +188,56 @@ namespace Insidash.BLL.Parsers
                                  ?? string.Empty,
 
                         Amount = ParseAmount((string)v.Element("AMOUNT") ?? (string)v.Element("Amount")),
-                        Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty
+                        Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty,
+                        InventoryItems = new List<TallyVoucherInventoryItemDto>()
                     };
+
+                    // ── Nested Inventory Extraction ──
+                    // Targets standard Tally sales/purchase breakdown list blocks
+                    var inventoryElements = v.Descendants("ALLINVENTORYENTRIES.LIST");
+                    foreach (var invElement in inventoryElements)
+                    {
+                        string stockItemName = (string)invElement.Element("STOCKITEMNAME") ?? (string)invElement.Element("StockItemName");
+
+                        if (!string.IsNullOrEmpty(stockItemName))
+                        {
+                            // Clean strings like "25.00 Pcs" or "120.00/Box" to parse cleanly into numbers
+                            string rawQty = (string)invElement.Element("BILLEDQTY") ?? (string)invElement.Element("BilledQty") ?? "0";
+                            string rawRate = (string)invElement.Element("RATE") ?? (string)invElement.Element("Rate") ?? "0";
+                            string rawAmt = (string)invElement.Element("AMOUNT") ?? (string)invElement.Element("Amount") ?? "0";
+
+                            voucherDto.InventoryItems.Add(new TallyVoucherInventoryItemDto
+                            {
+                                VoucherID = voucherGuid,
+                                StockItemName = stockItemName.Trim(),
+                                Quantity = CleanAndParseTallyNumeric(rawQty),
+                                Rate = CleanAndParseTallyNumeric(rawRate),
+                                Amount = ParseAmount(rawAmt) // Leverages your existing balance/sign parser
+                            });
+                        }
+                    }
+
+                    return voucherDto;
                 })
                 .ToList();
+        }
+
+        /// <summary>
+        /// Auxiliary cleaner method to strip unit metrics (like 'Nos', 'Pcs', '/Kg') 
+        /// out of raw Tally XML numbers before applying a decimal conversion.
+        /// </summary>
+        private decimal CleanAndParseTallyNumeric(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return 0;
+
+            // Remove alphabetical characters and formatting spaces/slashes
+            string cleanString = System.Text.RegularExpressions.Regex.Replace(input, @"[A-Za-z\/ ]", "");
+
+            if (decimal.TryParse(cleanString, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal result))
+            {
+                return result;
+            }
+            return 0;
         }
     }
 
@@ -206,6 +256,16 @@ namespace Insidash.BLL.Parsers
         public string PartyName { get; set; }
         public decimal Amount { get; set; }
         public string Narration { get; set; }
+        public List<TallyVoucherInventoryItemDto> InventoryItems { get; set; } = new List<TallyVoucherInventoryItemDto>();
+    }
+
+    public class TallyVoucherInventoryItemDto
+    {
+        public string VoucherID { get; set; }
+        public string StockItemName { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal Rate { get; set; }
+        public decimal Amount { get; set; }
     }
 
     public class TallyStockItemDto
