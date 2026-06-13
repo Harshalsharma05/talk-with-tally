@@ -72,7 +72,7 @@ namespace Insidash.TallyApi.Controllers
                     Amount = dto.Amount,
                     Narration = dto.Narration,
 
-                    // ── NEW STEP: Map child inventory line items over to the parent TallyVoucher entity ──
+                    // Map child inventory line items over to the parent TallyVoucher entity
                     InventoryItems = dto.InventoryItems != null
                         ? dto.InventoryItems.Select(itemDto => new TallyVoucherInventoryItem
                         {
@@ -82,7 +82,17 @@ namespace Insidash.TallyApi.Controllers
                             Rate = itemDto.Rate,
                             Amount = itemDto.Amount
                         }).ToList()
-                        : new List<TallyVoucherInventoryItem>()
+                        : new List<TallyVoucherInventoryItem>(),
+
+                    // ── NEW STEP: Map child ledger entries over to the parent TallyVoucher entity ──
+                    LedgerEntries = dto.LedgerEntries != null
+                        ? dto.LedgerEntries.Select(ledgerDto => new TallyVoucherLedgerItem
+                        {
+                            LedgerName = ledgerDto.LedgerName,
+                            Amount = ledgerDto.Amount,
+                            IsDeemedPositive = ledgerDto.IsDeemedPositive
+                        }).ToList()
+                        : new List<TallyVoucherLedgerItem>()
                 }).ToList();
 
                 // 3. Pass the structural records downstream (The updated repo will process both headers and lines atomically)
@@ -144,6 +154,28 @@ namespace Insidash.TallyApi.Controllers
                     companyId,
                     dataType = "BillOutstandings",
                     recordsProcessed = dbBills.Count
+                });
+            }
+            else if (string.Equals(payload.DataType, "groups", StringComparison.OrdinalIgnoreCase))
+            {
+                var rawDtos = _parser.ParseGroupsToDto(payload.RawXml);
+                var dbGroups = rawDtos.Select(dto => new TallyGroup
+                {
+                    CompanyID = companyId,
+                    Name = dto.Name,
+                    Parent = dto.Parent,
+                    SyncedAt = DateTime.Now
+                }).ToList();
+
+                _relationalRepo.SaveGroups(companyId, dbGroups);
+                UpsertSyncState(companyId, "Groups", dbGroups.Count);
+
+                return Ok(new
+                {
+                    status = "synced",
+                    companyId,
+                    dataType = "Groups",
+                    recordsProcessed = dbGroups.Count
                 });
             }
             else

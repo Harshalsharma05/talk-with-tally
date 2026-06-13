@@ -86,16 +86,16 @@ namespace Insidash.DAL.Repositories
                         {
                             cmd.Transaction = tx;
                             cmd.CommandText = @"
-                        CREATE TABLE #TallyVoucherStaging (
-                            VoucherID  NVARCHAR(50),
-                            CompanyID  INT,
-                            Date       DATE,
-                            VchType    NVARCHAR(100),
-                            PartyName  NVARCHAR(255),
-                            Amount     DECIMAL(18,2),
-                            Narration  NVARCHAR(MAX),
-                            SyncedAt   DATETIME
-                        )";
+                CREATE TABLE #TallyVoucherStaging (
+                    VoucherID  NVARCHAR(50),
+                    CompanyID  INT,
+                    Date       DATE,
+                    VchType    NVARCHAR(100),
+                    PartyName  NVARCHAR(255),
+                    Amount     DECIMAL(18,2),
+                    Narration  NVARCHAR(MAX),
+                    SyncedAt   DATETIME
+                )";
                             cmd.ExecuteNonQuery();
                         }
 
@@ -110,8 +110,9 @@ namespace Insidash.DAL.Repositories
                         voucherTable.Columns.Add("Narration", typeof(string));
                         voucherTable.Columns.Add("SyncedAt", typeof(DateTime));
 
-                        // Collection to safely extract and flatten nested inventory paths 
+                        // Collections to safely extract and flatten nested paths
                         var parsedInventoryLines = new List<TallyVoucherInventoryItem>();
+                        var parsedLedgerLines = new List<TallyVoucherLedgerItem>();
 
                         foreach (var voucher in vouchers)
                         {
@@ -130,14 +131,25 @@ namespace Insidash.DAL.Repositories
                                 DateTime.Now
                             );
 
-                            // If your entities mapped the child collection from the parser, gather them here
+                            // Gather child inventory lines
                             if (voucher.InventoryItems != null && voucher.InventoryItems.Any())
                             {
                                 foreach (var item in voucher.InventoryItems)
                                 {
-                                    item.VoucherID = finalVoucherId; // Ensure precise foreign key matching
+                                    item.VoucherID = finalVoucherId;
                                     item.CompanyID = companyId;
                                     parsedInventoryLines.Add(item);
+                                }
+                            }
+
+                            // Gather child ledger lines
+                            if (voucher.LedgerEntries != null && voucher.LedgerEntries.Any())
+                            {
+                                foreach (var item in voucher.LedgerEntries)
+                                {
+                                    item.VoucherID = finalVoucherId;
+                                    item.CompanyID = companyId;
+                                    parsedLedgerLines.Add(item);
                                 }
                             }
                         }
@@ -155,38 +167,34 @@ namespace Insidash.DAL.Repositories
                         {
                             cmd.Transaction = tx;
                             cmd.CommandText = @"
-                        MERGE TallyVoucher AS target
-                        USING #TallyVoucherStaging AS source
-                            ON target.VoucherID = source.VoucherID
-                                AND target.CompanyID = source.CompanyID
-                        WHEN MATCHED THEN
-                            UPDATE SET
-                                target.Date      = source.Date,
-                                target.VchType   = source.VchType,
-                                target.PartyName = source.PartyName,
-                                target.Amount    = source.Amount,
-                                target.Narration = source.Narration,
-                                target.SyncedAt  = source.SyncedAt
-                        WHEN NOT MATCHED THEN
-                            INSERT (VoucherID, CompanyID, Date, VchType, PartyName, Amount, Narration, SyncedAt)
-                            VALUES (source.VoucherID, source.CompanyID, source.Date,
-                                    source.VchType, source.PartyName, source.Amount,
-                                    source.Narration, source.SyncedAt);
+                MERGE TallyVoucher AS target
+                USING #TallyVoucherStaging AS source
+                    ON target.VoucherID = source.VoucherID
+                        AND target.CompanyID = source.CompanyID
+                WHEN MATCHED THEN
+                    UPDATE SET
+                        target.Date      = source.Date,
+                        target.VchType   = source.VchType,
+                        target.PartyName = source.PartyName,
+                        target.Amount    = source.Amount,
+                        target.Narration = source.Narration,
+                        target.SyncedAt  = source.SyncedAt
+                WHEN NOT MATCHED THEN
+                    INSERT (VoucherID, CompanyID, Date, VchType, PartyName, Amount, Narration, SyncedAt)
+                    VALUES (source.VoucherID, source.CompanyID, source.Date,
+                            source.VchType, source.PartyName, source.Amount,
+                            source.Narration, source.SyncedAt);
 
-                        DROP TABLE #TallyVoucherStaging;";
+                DROP TABLE #TallyVoucherStaging;";
                             cmd.ExecuteNonQuery();
                         }
 
-                        // 5. Clean historical detail breakdown lines to prevent dirty row accumulation on updates
+                        // 5. Clean historical inventory detail lines
                         if (vouchers.Any())
                         {
-                            // Clean up existing details for the incoming batch of vouchers
                             using (var cmd = connection.CreateCommand())
                             {
                                 cmd.Transaction = tx;
-
-                                // Constructing a safe parametric context block if the batch is large is ideal,
-                                // but since these are controlled internal sync batches, clearing by targeted VoucherIDs works cleanly.
                                 var uniqueVoucherIds = vouchers.Where(v => !string.IsNullOrWhiteSpace(v.VoucherID))
                                                                .Select(v => $"'{v.VoucherID.Replace("'", "''")}'")
                                                                .Distinct();
@@ -201,7 +209,7 @@ namespace Insidash.DAL.Repositories
                             }
                         }
 
-                        // 6. Bulk copy child details to destination table if any lines exist
+                        // 6. Bulk copy child inventory details to destination table if any lines exist
                         if (parsedInventoryLines.Any())
                         {
                             var inventoryTable = new DataTable();
@@ -231,7 +239,6 @@ namespace Insidash.DAL.Repositories
                                 bulkItems.DestinationTableName = "TallyVoucherInventoryItem";
                                 bulkItems.BatchSize = 500;
 
-                                // Explicit column mappings to ensure accurate destination assignment
                                 bulkItems.ColumnMappings.Add("VoucherID", "VoucherID");
                                 bulkItems.ColumnMappings.Add("CompanyID", "CompanyID");
                                 bulkItems.ColumnMappings.Add("StockItemName", "StockItemName");
@@ -241,6 +248,65 @@ namespace Insidash.DAL.Repositories
                                 bulkItems.ColumnMappings.Add("SyncedAt", "SyncedAt");
 
                                 bulkItems.WriteToServer(inventoryTable);
+                            }
+                        } // ── Inventory block ends cleanly here ──
+
+                        // 7. Clean historical ledger detail lines to prevent duplicates
+                        if (vouchers.Any())
+                        {
+                            using (var cmd = connection.CreateCommand())
+                            {
+                                cmd.Transaction = tx;
+                                var uniqueVoucherIds = vouchers.Where(v => !string.IsNullOrWhiteSpace(v.VoucherID))
+                                                               .Select(v => $"'{v.VoucherID.Replace("'", "''")}'")
+                                                               .Distinct();
+
+                                if (uniqueVoucherIds.Any())
+                                {
+                                    string idList = string.Join(",", uniqueVoucherIds);
+                                    cmd.CommandText = $"DELETE FROM TallyVoucherLedgerItem WHERE CompanyID = @cid AND VoucherID IN ({idList})";
+                                    cmd.Parameters.AddWithValue("@cid", companyId);
+                                    cmd.ExecuteNonQuery();
+                                }
+                            }
+                        }
+
+                        // 8. Bulk copy child ledger details to destination table if any lines exist
+                        if (parsedLedgerLines.Any())
+                        {
+                            var ledgerTable = new DataTable();
+                            ledgerTable.Columns.Add("VoucherID", typeof(string));
+                            ledgerTable.Columns.Add("CompanyID", typeof(int));
+                            ledgerTable.Columns.Add("LedgerName", typeof(string));
+                            ledgerTable.Columns.Add("Amount", typeof(decimal));
+                            ledgerTable.Columns.Add("IsDeemedPositive", typeof(bool));
+                            ledgerTable.Columns.Add("SyncedAt", typeof(DateTime));
+
+                            foreach (var item in parsedLedgerLines)
+                            {
+                                ledgerTable.Rows.Add(
+                                    item.VoucherID,
+                                    companyId,
+                                    item.LedgerName ?? string.Empty,
+                                    item.Amount,
+                                    item.IsDeemedPositive,
+                                    DateTime.Now
+                                );
+                            }
+
+                            using (var bulkLedgers = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, tx))
+                            {
+                                bulkLedgers.DestinationTableName = "TallyVoucherLedgerItem";
+                                bulkLedgers.BatchSize = 500;
+
+                                bulkLedgers.ColumnMappings.Add("VoucherID", "VoucherID");
+                                bulkLedgers.ColumnMappings.Add("CompanyID", "CompanyID");
+                                bulkLedgers.ColumnMappings.Add("LedgerName", "LedgerName");
+                                bulkLedgers.ColumnMappings.Add("Amount", "Amount");
+                                bulkLedgers.ColumnMappings.Add("IsDeemedPositive", "IsDeemedPositive");
+                                bulkLedgers.ColumnMappings.Add("SyncedAt", "SyncedAt");
+
+                                bulkLedgers.WriteToServer(ledgerTable);
                             }
                         }
 
@@ -254,7 +320,6 @@ namespace Insidash.DAL.Repositories
                 }
             }
         }
-
         public string ExecuteQueryToDynamicJson(string sqlQuery)
         {
             using (var ctx = new InsidashTallyContext("name=InsidashTallyDbReadOnly"))
@@ -388,6 +453,72 @@ namespace Insidash.DAL.Repositories
                             bulk.DestinationTableName = "TallyBillOutstanding";
                             bulk.BatchSize = 500;
                             bulk.WriteToServer(table);
+                        }
+
+                        tx.Commit();
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
+        // ── ADD THIS METHOD inside TallyRelationalRepository class ──
+        public void SaveGroups(int companyId, List<TallyGroup> groups)
+        {
+            using (var ctx = new InsidashTallyContext())
+            {
+                var connection = (SqlConnection)ctx.Database.Connection;
+                if (connection.State != ConnectionState.Open)
+                    connection.Open();
+
+                using (var tx = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Clear existing groups for this company to prevent duplicates
+                        using (var cmd = connection.CreateCommand())
+                        {
+                            cmd.Transaction = tx;
+                            cmd.CommandText = "DELETE FROM TallyGroup WHERE CompanyID = @cid";
+                            cmd.Parameters.AddWithValue("@cid", companyId);
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        // 2. Bulk copy new groups
+                        if (groups.Any())
+                        {
+                            var table = new DataTable();
+                            table.Columns.Add("CompanyID", typeof(int));
+                            table.Columns.Add("Name", typeof(string));
+                            table.Columns.Add("Parent", typeof(string));
+                            table.Columns.Add("SyncedAt", typeof(DateTime));
+
+                            foreach (var g in groups)
+                            {
+                                table.Rows.Add(
+                                    companyId,
+                                    g.Name ?? string.Empty,
+                                    g.Parent ?? string.Empty,
+                                    DateTime.Now
+                                );
+                            }
+
+                            using (var bulk = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, tx))
+                            {
+                                bulk.DestinationTableName = "TallyGroup";
+                                bulk.BatchSize = 500;
+
+                                bulk.ColumnMappings.Add("CompanyID", "CompanyID");
+                                bulk.ColumnMappings.Add("Name", "Name");
+                                bulk.ColumnMappings.Add("Parent", "Parent");
+                                bulk.ColumnMappings.Add("SyncedAt", "SyncedAt");
+
+                                bulk.WriteToServer(table);
+                            }
                         }
 
                         tx.Commit();

@@ -57,8 +57,8 @@ namespace Insidash.TallyConnector
                 return result;
             }
 
-            // Sync all four major data types required by the AI chat engine
-            var dataTypes = new[] { "Ledger", "Voucher", "StockItem", "BillOutstanding" };
+            // Sync all five major data types required by the AI chat engine
+            var dataTypes = new[] { "Group", "Ledger", "Voucher", "StockItem", "BillOutstanding" };
             foreach (var dataType in dataTypes)
             {
                 try
@@ -114,6 +114,7 @@ namespace Insidash.TallyConnector
             else if (dataType == "Voucher") apiDataType = "Vouchers";
             else if (dataType == "StockItem") apiDataType = "StockItems";
             else if (dataType == "BillOutstanding") apiDataType = "BillOutstandings";
+            else if (dataType == "Group") apiDataType = "Groups";
 
             var payload = JsonConvert.SerializeObject(new { DataType = apiDataType, RawXml = rawXml });
             using (var req = new HttpRequestMessage(HttpMethod.Post, _apiBase.TrimEnd('/') + "/api/tally/sync"))

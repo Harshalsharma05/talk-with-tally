@@ -12,7 +12,35 @@ namespace Insidash.TallyConnector
           ? ""
           : $"<SVCURRENTCOMPANY>{System.Security.SecurityElement.Escape(tallyCompanyName)}</SVCURRENTCOMPANY>";
 
-      if (string.Equals(dataType, "Ledger", StringComparison.OrdinalIgnoreCase))
+      if (string.Equals(dataType, "Group", StringComparison.OrdinalIgnoreCase))
+      {
+        return $@"<ENVELOPE>
+          <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>Export</TALLYREQUEST>
+            <TYPE>Collection</TYPE>
+            <ID>MyGroupCollection</ID>
+          </HEADER>
+          <BODY>
+            <DESC>
+              <STATICVARIABLES>
+                <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                {companyTag}
+              </STATICVARIABLES>
+              <TDL>
+                <TDLMESSAGE>
+                  <COLLECTION NAME=""MyGroupCollection"">
+                    <TYPE>Group</TYPE>
+                    <NATIVEMETHOD>NAME</NATIVEMETHOD>
+                    <NATIVEMETHOD>PARENT</NATIVEMETHOD>
+                  </COLLECTION>
+                </TDLMESSAGE>
+              </TDL>
+            </DESC>
+          </BODY>
+        </ENVELOPE>";
+      }
+      else if (string.Equals(dataType, "Ledger", StringComparison.OrdinalIgnoreCase))
       {
         return $@"<ENVELOPE>
           <HEADER>
@@ -117,15 +145,13 @@ namespace Insidash.TallyConnector
               <TDL>
                 <TDLMESSAGE>
                   <COLLECTION NAME=""MyOutstandingCollection"">
-                    <TYPE>Ledger</TYPE>
-                    <FILTER>IsADebtors</FILTER>
+                    <TYPE>Bill</TYPE>
                     <NATIVEMETHOD>NAME</NATIVEMETHOD>
+                    <NATIVEMETHOD>PARENT</NATIVEMETHOD>
+                    <NATIVEMETHOD>BILLDATE</NATIVEMETHOD>
+                    <NATIVEMETHOD>BILLDATEDUE</NATIVEMETHOD>
                     <NATIVEMETHOD>CLOSINGBALANCE</NATIVEMETHOD>
-                    <NATIVEMETHOD>BILLDETAILS.LIST</NATIVEMETHOD>
                   </COLLECTION>
-                  <SYSTEM TYPE=""Formulae"" NAME=""IsADebtors"">
-                    $$IsDebtors:$PARENT
-                  </SYSTEM>
                 </TDLMESSAGE>
               </TDL>
             </DESC>
@@ -138,7 +164,7 @@ namespace Insidash.TallyConnector
 
     public static string BuildCompanyListEnvelope()
     {
-        return @"<ENVELOPE>
+      return @"<ENVELOPE>
         <HEADER>
           <VERSION>1</VERSION>
           <TALLYREQUEST>Export</TALLYREQUEST>

@@ -13,5 +13,6 @@ namespace Insidash.DAL.Entities
         public string Narration { get; set; }
         public DateTime SyncedAt { get; set; }
         public virtual List<TallyVoucherInventoryItem> InventoryItems { get; set; } = new List<TallyVoucherInventoryItem>();
+        public virtual List<TallyVoucherLedgerItem> LedgerEntries { get; set; } = new List<TallyVoucherLedgerItem>();
     }
 }

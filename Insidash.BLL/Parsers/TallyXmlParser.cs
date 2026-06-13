@@ -143,6 +143,27 @@ namespace Insidash.BLL.Parsers
             };
         }
 
+        public List<TallyGroupDto> ParseGroupsToDto(string rawXml)
+        {
+            string cleanXml = SanitizeXml(rawXml);
+            XDocument document = XDocument.Parse(cleanXml);
+            return document.Descendants("GROUP")
+                .Concat(document.Descendants("Group"))
+                .Select(g => {
+                    string parent = (string)g.Element("PARENT") ?? (string)g.Element("Parent") ?? string.Empty;
+                    
+                    // Clean up Tally's hidden \x04 control character prefix if present
+                    if (parent.StartsWith("\x04")) parent = parent.Substring(1).Trim();
+                    parent = parent.Trim();
+
+                    return new TallyGroupDto
+                    {
+                        Name = (string)g.Attribute("NAME") ?? (string)g.Attribute("Name") ?? (string)g.Element("NAME") ?? (string)g.Element("Name") ?? string.Empty,
+                        Parent = parent
+                    };
+                })
+                .ToList();
+        }
         public List<TallyLedgerDto> ParseLedgersToDto(string rawXml)
         {
             string cleanXml = SanitizeXml(rawXml);
@@ -161,26 +182,47 @@ namespace Insidash.BLL.Parsers
         {
             string cleanXml = SanitizeXml(rawXml);
             XDocument document = XDocument.Parse(cleanXml);
-
             return document.Descendants("VOUCHER")
                 .Select(v =>
                 {
-                    // ── Precise Date Parsing ──
+                    // Precise Date Parsing
                     string rawDate = (string)v.Element("DATE") ?? (string)v.Element("Date") ?? string.Empty;
                     DateTime voucherDate = DateTime.TryParseExact(rawDate, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime parsedDate)
                         ? parsedDate
                         : (DateTime.TryParse(rawDate, out DateTime fallbackDate) ? fallbackDate : DateTime.Today);
 
-                    // Determine the stable Voucher ID to tie line items accurately
-                    string voucherGuid = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString();
+                    string voucherId = (string)v.Element("GUID") ?? (string)v.Element("Guid") ?? Guid.NewGuid().ToString();
 
-                    var voucherDto = new TallyVoucherDto
+                    // ── 1. Extract nested ledger entries ──
+                    var ledgerList = v.Descendants("ALLLEDGERENTRIES.LIST")
+                        .Concat(v.Descendants("AllLedgerEntries.List"))
+                        .Select(le => new TallyVoucherLedgerItemDto
+                        {
+                            LedgerName = (string)le.Element("LEDGERNAME") ?? (string)le.Element("LedgerName") ?? string.Empty,
+                            Amount = ParseAmount((string)le.Element("AMOUNT") ?? (string)le.Element("Amount")),
+                            IsDeemedPositive = ((string)le.Element("ISDEEMEDPOSITIVE") ?? (string)le.Element("IsDeemedPositive") ?? "").Trim().Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                        })
+                        .ToList();
+
+                    // ── 2. Extract nested inventory allocations ──
+                    var inventoryList = v.Descendants("INVENTORYALLOCATIONS.LIST")
+                        .Concat(v.Descendants("InventoryAllocations.List"))
+                        .Select(ia => new TallyVoucherInventoryItemDto
+                        {
+                            VoucherID = voucherId,
+                            StockItemName = (string)ia.Element("STOCKITEMNAME") ?? (string)ia.Element("StockItemName") ?? string.Empty,
+                            Quantity = ParseDecimalSafe((string)ia.Element("BILLEDQTY") ?? (string)ia.Element("BilledQty") ?? (string)ia.Element("ACTUALQTY") ?? (string)ia.Element("ActualQty")),
+                            Rate = ParseDecimalSafe((string)ia.Element("RATE") ?? (string)ia.Element("Rate")),
+                            Amount = ParseAmount((string)ia.Element("AMOUNT") ?? (string)ia.Element("Amount"))
+                        })
+                        .ToList();
+
+                    return new TallyVoucherDto
                     {
-                        VoucherID = voucherGuid,
+                        VoucherID = voucherId,
                         Date = voucherDate,
                         VchType = (string)v.Element("VOUCHERTYPENAME") ?? (string)v.Element("VoucherTypeName") ?? string.Empty,
 
-                        // ── Precise Party Name Mapping ──
                         PartyName = (string)v.Element("PARTYLEDGERNAME")
                                  ?? (string)v.Element("PartyLedgerName")
                                  ?? (string)v.Element("PARTYNAME")
@@ -189,39 +231,13 @@ namespace Insidash.BLL.Parsers
 
                         Amount = ParseAmount((string)v.Element("AMOUNT") ?? (string)v.Element("Amount")),
                         Narration = (string)v.Element("NARRATION") ?? (string)v.Element("Narration") ?? string.Empty,
-                        InventoryItems = new List<TallyVoucherInventoryItemDto>()
+
+                        InventoryItems = inventoryList,
+                        LedgerEntries = ledgerList
                     };
-
-                    // ── Nested Inventory Extraction ──
-                    // Targets standard Tally sales/purchase breakdown list blocks
-                    var inventoryElements = v.Descendants("ALLINVENTORYENTRIES.LIST");
-                    foreach (var invElement in inventoryElements)
-                    {
-                        string stockItemName = (string)invElement.Element("STOCKITEMNAME") ?? (string)invElement.Element("StockItemName");
-
-                        if (!string.IsNullOrEmpty(stockItemName))
-                        {
-                            // Clean strings like "25.00 Pcs" or "120.00/Box" to parse cleanly into numbers
-                            string rawQty = (string)invElement.Element("BILLEDQTY") ?? (string)invElement.Element("BilledQty") ?? "0";
-                            string rawRate = (string)invElement.Element("RATE") ?? (string)invElement.Element("Rate") ?? "0";
-                            string rawAmt = (string)invElement.Element("AMOUNT") ?? (string)invElement.Element("Amount") ?? "0";
-
-                            voucherDto.InventoryItems.Add(new TallyVoucherInventoryItemDto
-                            {
-                                VoucherID = voucherGuid,
-                                StockItemName = stockItemName.Trim(),
-                                Quantity = CleanAndParseTallyNumeric(rawQty),
-                                Rate = CleanAndParseTallyNumeric(rawRate),
-                                Amount = ParseAmount(rawAmt) // Leverages your existing balance/sign parser
-                            });
-                        }
-                    }
-
-                    return voucherDto;
                 })
                 .ToList();
         }
-
         /// <summary>
         /// Auxiliary cleaner method to strip unit metrics (like 'Nos', 'Pcs', '/Kg') 
         /// out of raw Tally XML numbers before applying a decimal conversion.
@@ -241,6 +257,12 @@ namespace Insidash.BLL.Parsers
         }
     }
 
+    public class TallyGroupDto
+    {
+        public string Name { get; set; }
+        public string Parent { get; set; }
+    }
+
     public class TallyLedgerDto
     {
         public string Name { get; set; }
@@ -256,7 +278,16 @@ namespace Insidash.BLL.Parsers
         public string PartyName { get; set; }
         public decimal Amount { get; set; }
         public string Narration { get; set; }
+        public List<TallyVoucherLedgerItemDto> LedgerEntries { get; set; } = new List<TallyVoucherLedgerItemDto>();
         public List<TallyVoucherInventoryItemDto> InventoryItems { get; set; } = new List<TallyVoucherInventoryItemDto>();
+    }
+
+    // ── NEW: Holds child ledger allocations (Tax, Sales, Expenses etc.) ──
+    public class TallyVoucherLedgerItemDto
+    {
+        public string LedgerName { get; set; }
+        public decimal Amount { get; set; }
+        public bool IsDeemedPositive { get; set; } // Yes = True (Debit), No = False (Credit)
     }
 
     public class TallyVoucherInventoryItemDto
@@ -338,53 +369,50 @@ namespace Insidash.BLL.Parsers
             XDocument document = XDocument.Parse(cleanXml);
             var list = new List<TallyBillOutstandingDto>();
 
-            foreach (var ledger in document.Descendants("LEDGER"))
+            // Support both uppercase <BILL> and TitleCase <Bill> tags
+            var billElements = document.Descendants("BILL").Concat(document.Descendants("Bill"));
+
+            foreach (var bill in billElements)
             {
-                string partyName = (string)ledger.Attribute("NAME") ?? (string)ledger.Attribute("Name") ?? (string)ledger.Element("NAME") ?? (string)ledger.Element("Name") ?? string.Empty;
+                // PARENT contains the Customer/Debtor Ledger Name (e.g., "Rohan")
+                string partyName = (string)bill.Element("PARENT") ?? (string)bill.Element("Parent") ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(partyName)) continue;
 
-                // Match both uppercase and TitleCase for BILLDETAILS.LIST / BillDetails.List
-                var billElements = ledger.Descendants("BILLDETAILS.LIST").Concat(ledger.Descendants("BillDetails.List"));
+                // Clean up any potential ASCII control characters from parent name
+                if (partyName.StartsWith("\x04")) partyName = partyName.Substring(1).Trim();
+                partyName = partyName.Trim();
 
-                foreach (var bill in billElements)
+                // NAME contains the Bill Reference Number (e.g., "INV-ROHAN-01")
+                string billRef = (string)bill.Element("NAME") ?? (string)bill.Element("Name") ?? string.Empty;
+
+                // BILLDATE contains the creation date of the outstanding bill (yyyyMMdd)
+                string billDateStr = (string)bill.Element("BILLDATE") ?? (string)bill.Element("BillDate") ?? string.Empty;
+                DateTime billDate = DateTime.TryParseExact(billDateStr, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime bd)
+                    ? bd
+                    : (DateTime.TryParse(billDateStr, out DateTime d) ? d : DateTime.Today);
+
+                // BILLDATEDUE contains the due date (yyyyMMdd)
+                string rawDueDate = (string)bill.Element("BILLDATEDUE") ?? (string)bill.Element("BillDateDue") ?? string.Empty;
+                DateTime? dueDate = null;
+                if (!string.IsNullOrWhiteSpace(rawDueDate))
                 {
-                    string billDateStr = (string)bill.Element("BILLDATE") ?? (string)bill.Element("BillDate") ?? string.Empty;
-                    DateTime billDate = DateTime.TryParseExact(billDateStr, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime bd)
-                        ? bd
-                        : (DateTime.TryParse(billDateStr, out DateTime d) ? d : DateTime.Today);
-
-                    string billRef = (string)bill.Element("BILLREF") ?? (string)bill.Element("BillRef") ?? string.Empty;
-
-                    // Amount can be in BILLCLVAL, AMOUNT, or TitleCase variations
-                    string rawAmt = (string)bill.Element("BILLCLVAL")
-                                 ?? (string)bill.Element("BillClVal")
-                                 ?? (string)bill.Element("AMOUNT")
-                                 ?? (string)bill.Element("Amount")
-                                 ?? "0";
-                    decimal amount = ParseAmount(rawAmt);
-
-                    string rawDueDate = (string)bill.Element("BILLDATEDUE")
-                                     ?? (string)bill.Element("BillDateDue")
-                                     ?? (string)bill.Element("BILLDUEFROM")
-                                     ?? (string)bill.Element("BillDueFrom")
-                                     ?? string.Empty;
-                    DateTime? dueDate = null;
-                    if (!string.IsNullOrWhiteSpace(rawDueDate))
-                    {
-                        dueDate = DateTime.TryParseExact(rawDueDate, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dd)
-                            ? dd
-                            : (DateTime.TryParse(rawDueDate, out DateTime d2) ? d2 : (DateTime?)null);
-                    }
-
-                    list.Add(new TallyBillOutstandingDto
-                    {
-                        PartyName = partyName,
-                        BillDate = billDate,
-                        BillRef = billRef,
-                        Amount = amount,
-                        DueDate = dueDate
-                    });
+                    dueDate = DateTime.TryParseExact(rawDueDate, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dd)
+                        ? dd
+                        : (DateTime.TryParse(rawDueDate, out DateTime d2) ? d2 : (DateTime?)null);
                 }
+
+                // CLOSINGBALANCE contains the unpaid outstanding balance amount
+                string rawAmt = (string)bill.Element("CLOSINGBALANCE") ?? (string)bill.Element("ClosingBalance") ?? "0";
+                decimal amount = ParseAmount(rawAmt);
+
+                list.Add(new TallyBillOutstandingDto
+                {
+                    PartyName = partyName,
+                    BillDate = billDate,
+                    BillRef = billRef,
+                    Amount = amount,
+                    DueDate = dueDate
+                });
             }
 
             return list;

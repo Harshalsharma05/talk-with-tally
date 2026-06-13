@@ -12,18 +12,58 @@ namespace Insidash.TallyConnector
         [STAThread]
         static void Main(string[] args)
         {
-            // Detect launch context:
-            // - Environment.UserInteractive is FALSE when called by Windows Service Control Manager (SCM).
-            // - Environment.UserInteractive is TRUE when run by a user (double-click, command line, startup folder).
-            LocalConfig.Save(new ConnectorConfig());
-
-            var config = LocalConfig.Load();
-            System.IO.File.WriteAllText(
-            System.IO.Path.Combine(
+            // 1. Ensure the AppData directory exists safely
+            string appDataPath = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "InsidashTallyConnector", "debug.txt"),
-            "TOKEN: " + config.SyncToken + "\r\nCOMPANY: " + config.CompanyID);
+                "InsidashTallyConnector"
+            );
+            try
+            {
+                System.IO.Directory.CreateDirectory(appDataPath);
+            }
+            catch 
+            { 
+                // Prevent crash if folder permissions are restrictive
+            }
 
+            // 2. Load config safely (with fallback if missing or corrupted)
+            ConnectorConfig config = null;
+            try
+            {
+                config = LocalConfig.Load();
+            }
+            catch 
+            { 
+                // Ignore loading errors to prevent silent crashes
+            }
+
+            if (config == null)
+            {
+                config = new ConnectorConfig();
+                try
+                {
+                    // Create and save a clean, default config file on first run
+                    LocalConfig.Save(config); 
+                }
+                catch 
+                {
+                }
+            }
+
+            // 3. Write debug text safely
+            try
+            {
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(appDataPath, "debug.txt"),
+                    "TOKEN: " + (config.SyncToken ?? "") + "\r\nCOMPANY: " + config.CompanyID
+                );
+            }
+            catch 
+            { 
+                // Ignore writing errors
+            }
+
+            // 4. Boot SCM vs GUI
             if (!Environment.UserInteractive)
             {
                 // Run as a background Windows Service

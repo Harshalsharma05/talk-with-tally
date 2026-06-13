@@ -65,6 +65,20 @@ namespace Insidash.BLL.Services
             - Amount (DECIMAL(18,2)) - Outstanding amount
             - DueDate (DATE) - Bill payment due date
 
+            6. Table 'TallyVoucherLedgerItem':
+            - VoucherLedgerItemID (INT, PRIMARY KEY IDENTITY)
+            - VoucherID (NVARCHAR(50)) - Foreign Key to TallyVoucher.VoucherID
+            - CompanyID (INT) - Filter queries by CompanyID = {companyId}
+            - LedgerName (NVARCHAR(255)) - Name of the individual ledger allocated in the transaction (e.g. Sales, Rent, CGST, SGST, IGST)
+            - Amount (DECIMAL(18,2)) - Amount allocated to this ledger (Debit/Credit value)
+            - IsDeemedPositive (BIT) - True indicates Debit (Dr), False indicates Credit (Cr)
+
+            7. Table 'TallyGroup':
+            - GroupID (INT, PRIMARY KEY IDENTITY)
+            - CompanyID (INT) - Filter queries by CompanyID = {companyId}
+            - Name (NVARCHAR(255)) - Name of the accounting group master (e.g., Bank Accounts, Current Assets, Fixed Assets)
+            - Parent (NVARCHAR(255)) - Parent group name (e.g. Name='Bank Accounts', Parent='Current Assets')
+
             RULES:
             - Respond ONLY with the executable SQL Query inside a markdown code block: ```sql <sql query here> ```. Do not add explanations.
             - ALWAYS filter the queries by CompanyID = {companyId} on every joined table to maintain strict multi-tenant isolation.
@@ -74,10 +88,14 @@ namespace Insidash.BLL.Services
             - Voucher Transaction Line Items / Product Sales & Purchase Breakdown -> TallyVoucherInventoryItem.
             - Outstanding bills, aging, or receivables queries -> TallyBillOutstanding.
             - Outstanding bills older than N days -> DATEDIFF(DAY, BillDate, GETDATE()) > N.
+            - Tax Compliance & GST/TDS Breakdown queries -> TallyVoucherLedgerItem (use to calculate collected taxes on CGST, SGST, or IGST ledgers).
+            - Macro Financial Group Categories (Current Assets, Fixed Assets, Liabilities) -> Use TallyGroup to recursively map ledger parents to their parent groups.
 
             CRITICAL RELATIONAL JOIN RULES:
             1. To fetch items transacted inside an invoice/voucher, JOIN TallyVoucher with TallyVoucherInventoryItem on target.VoucherID = source.VoucherID AND target.CompanyID = source.CompanyID.
             2. To link individual voucher item lines to master stock properties (like parent group categories or unit definitions), JOIN TallyVoucherInventoryItem with TallyStockItem on TallyVoucherInventoryItem.StockItemName = TallyStockItem.Name AND TallyVoucherInventoryItem.CompanyID = TallyStockItem.CompanyID.
+            3. To fetch detailed tax ledger allocations or expense breakdowns inside a transaction, JOIN TallyVoucher with TallyVoucherLedgerItem on target.VoucherID = source.VoucherID AND target.CompanyID = source.CompanyID.
+            4. To map active ledger balances to their parent accounting group hierarchies, JOIN TallyLedger with TallyGroup on TallyLedger.Parent = TallyGroup.Name AND TallyLedger.CompanyID = TallyGroup.CompanyID.
 
             SUBQUERY RULES:
             - NEVER reference a table alias from the outer query inside a subquery.
