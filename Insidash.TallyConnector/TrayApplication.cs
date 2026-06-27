@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.ServiceProcess;
+using System.IO;
 
 namespace Insidash.TallyConnector
 {
@@ -15,14 +16,12 @@ namespace Insidash.TallyConnector
         private System.Windows.Forms.Timer _syncTimer;
         private readonly SynchronizationContext _uiContext;
         private DateTime _lastSyncTime = DateTime.MinValue;
-        private string _apiBase; // Promoted to field for re-activation/settings reloads
+        private string _apiBase;
 
         public TrayApplication()
         {
-            // Capture the UI thread's synchronization context for cross-thread status updates
             _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
-            // Ensure a local config file exists on disk
             if (!LocalConfig.Exists())
             {
                 LocalConfig.Save(new ConnectorConfig());
@@ -31,28 +30,27 @@ namespace Insidash.TallyConnector
             _config = LocalConfig.Load();
             _apiBase = System.Configuration.ConfigurationManager.AppSettings["ApiBaseUrl"];
 
-            // ── FIRST-RUN SETUP WIZARD ──
-            // If there are no configured profiles, run the Setup Wizard immediately.
             if (_config.Profiles == null || _config.Profiles.Count == 0)
             {
                 if (!PerformFirstRunSetup())
                 {
-                    // User canceled first-run setup, exit application
                     Application.Exit();
                     return;
                 }
-
-                // Reload config after successful setup
                 _config = LocalConfig.Load();
             }
 
             _engine = new SyncEngine(_config, _apiBase);
             _engine.OnStatusChanged += UpdateTooltip;
 
-            // Build tray icon
+            string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo.ico");
+
             _trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application, // Standard icon fallback (can be custom later)
+                // 2. Load the icon from the path, fallback to default if file is missing
+                Icon = System.IO.File.Exists(iconPath)
+               ? new Icon(iconPath)
+               : SystemIcons.Application,
                 Visible = true,
                 Text = "Insidash Tally Connector"
             };
@@ -66,28 +64,36 @@ namespace Insidash.TallyConnector
             menu.Items.Add("Exit Connector", null, OnExit);
             _trayIcon.ContextMenuStrip = menu;
 
-            // Initialize the menu text with current active status
             UpdateMenuTexts();
 
-            // Start periodic sync timer polling every 10 seconds
+            // Only run a local timer if the Windows Service is NOT installed/running
             _syncTimer = new System.Windows.Forms.Timer { Interval = 10000 };
             _syncTimer.Tick += async (s, e) => await PollSyncTimerTickAsync();
             _syncTimer.Start();
 
-            // Run first sync immediately in background
-            Task.Run(async () =>
-            {
-                await _engine.RunFullSyncAsync();
-                _lastSyncTime = DateTime.Now;
-            });
-
-            // Check for updates on startup
             Task.Run(async () =>
             {
                 var updater = new AutoUpdater(_apiBase.TrimEnd('/') + "/api/connector/version");
                 await updater.CheckAndUpdateAsync();
             });
         }
+
+        // ── THE MUTEX LOCKS: Prevents Tally Concurrency Crashes ──
+        private static Mutex _tallyMutex = new Mutex(false, "Global\\InsidashTallyMutex");
+
+        private void SuspendSync()
+        {
+            if (_syncTimer != null) _syncTimer.Stop();
+            // This blocks the Service's RunLoop
+            _tallyMutex.WaitOne(TimeSpan.FromSeconds(15));
+        }
+
+        private void ResumeSync()
+        {
+            try { _tallyMutex.ReleaseMutex(); } catch { }
+            if (_syncTimer != null) _syncTimer.Start();
+        }
+        // ────────────────────────────────────────────────────────
 
         private bool PerformFirstRunSetup()
         {
@@ -96,67 +102,51 @@ namespace Insidash.TallyConnector
                 "To begin, we will connect to your running Tally Prime instance and select which company you want to sync.",
                 "TalkWithTally Setup", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            // Fetch company list from Tally
-            System.Collections.Generic.List<string> companyNames;
+            SuspendSync(); // Lock Tally
+
             try
             {
-                // Create a temporary engine just to query Tally (active token doesn't matter yet)
-                var tempEngine = new SyncEngine(_config, _apiBase);
-                companyNames = Task.Run(async () => await tempEngine.GetTallyCompanyNamesAsync()).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    "Could not connect to Tally Prime.\n\n" +
-                    "Please ensure Tally Prime is running with its gateway server (HTTP port) enabled.\n\n" +
-                    "Error: " + ex.Message,
-                    "Setup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-
-            // Show company select dialog
-            using (var dialog = new CompanySelectWindow(_config, companyNames))
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
+                System.Collections.Generic.List<string> companyNames;
+                try
                 {
+                    var tempEngine = new SyncEngine(_config, _apiBase);
+                    companyNames = Task.Run(async () => await tempEngine.GetTallyCompanyNamesAsync()).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Could not connect to Tally Prime. Error: " + ex.Message, "Setup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
-            }
 
-            // Reload config after Selection dialog saved TallyCompanyName (but it has no profile yet)
-            _config = LocalConfig.Load();
-            string selectedCompany = _config.TallyCompanyName;
-
-            if (string.IsNullOrWhiteSpace(selectedCompany))
-            {
-                return false;
-            }
-
-            // Step B: Prompt for Activation Key for this selected company
-            using (var activation = new ActivationWindow(selectedCompany))
-            {
-                if (activation.ShowDialog() != DialogResult.OK)
+                using (var dialog = new CompanySelectWindow(_config, companyNames))
                 {
-                    return false;
+                    if (dialog.ShowDialog() != DialogResult.OK) return false;
                 }
-            }
 
-            return true;
+                _config = LocalConfig.Load();
+                if (string.IsNullOrWhiteSpace(_config.TallyCompanyName)) return false;
+
+                using (var activation = new ActivationWindow(_config.TallyCompanyName))
+                {
+                    if (activation.ShowDialog() != DialogResult.OK) return false;
+                }
+
+                return true;
+            }
+            finally
+            {
+                ResumeSync(); // Unlock Tally
+            }
         }
 
         private void UpdateTooltip(string message)
         {
-            // Marshal text updates back to the WinForms UI thread securely
             _uiContext.Post(_ =>
             {
                 if (_trayIcon != null)
                 {
                     string text = $"Insidash | {message}";
-                    // NotifyIcon tooltip has a hard limit of 63 characters in .NET Framework
-                    if (text.Length > 63)
-                    {
-                        text = text.Substring(0, 60) + "...";
-                    }
+                    if (text.Length > 63) text = text.Substring(0, 60) + "...";
                     _trayIcon.Text = text;
                 }
             }, null);
@@ -182,8 +172,20 @@ namespace Insidash.TallyConnector
 
         private async Task PollSyncTimerTickAsync()
         {
-            bool shouldSync = false;
+            // Only poll locally if the Windows Service isn't running to prevent double-hammering
+            bool isServiceRunning = false;
+            try
+            {
+                using (var sc = new ServiceController("InsidashTallyConnector"))
+                {
+                    isServiceRunning = (sc.Status == ServiceControllerStatus.Running);
+                }
+            }
+            catch { }
 
+            if (isServiceRunning) return; // Let the service handle background syncs!
+
+            bool shouldSync = false;
             if ((DateTime.Now - _lastSyncTime).TotalMilliseconds >= _config.SyncIntervalMs)
             {
                 shouldSync = true;
@@ -208,68 +210,72 @@ namespace Insidash.TallyConnector
 
         private async void OnSyncNow(object sender, EventArgs e)
         {
-            _trayIcon.ShowBalloonTip(2000, "Insidash", "Syncing Tally data...", ToolTipIcon.Info);
-            var result = await _engine.RunFullSyncAsync();
-            if (result.IsFullSuccess)
+            _trayIcon.ShowBalloonTip(2000, "Insidash", "Pausing background service for manual sync...", ToolTipIcon.Info);
+
+            SuspendSync(); // Lock Tally
+            try
             {
-                _lastSyncTime = DateTime.Now;
-                _trayIcon.ShowBalloonTip(2000, "Insidash", "Sync complete ✓", ToolTipIcon.Info);
+                var result = await _engine.RunFullSyncAsync();
+                if (result.IsFullSuccess)
+                {
+                    _lastSyncTime = DateTime.Now;
+                    _trayIcon.ShowBalloonTip(2000, "Insidash", "Sync complete ✓", ToolTipIcon.Info);
+                }
+                else
+                {
+                    _trayIcon.ShowBalloonTip(3000, "Insidash", $"Sync finished with {result.Errors.Count} errors.", ToolTipIcon.Warning);
+                }
             }
-            else
+            finally
             {
-                _trayIcon.ShowBalloonTip(3000, "Insidash", $"Sync finished with {result.Errors.Count} errors.", ToolTipIcon.Warning);
+                ResumeSync(); // Unlock Tally
             }
         }
 
         private void OnSelectCompany(object sender, EventArgs e)
         {
-            _trayIcon.ShowBalloonTip(1500, "Insidash", "Fetching companies from Tally...", ToolTipIcon.Info);
+            _trayIcon.ShowBalloonTip(1500, "Insidash", "Pausing sync to fetch companies safely...", ToolTipIcon.Info);
 
-            System.Collections.Generic.List<string> companyNames;
+            SuspendSync(); // Lock Tally from background interference
+
             try
             {
-                companyNames = Task.Run(async () => await _engine.GetTallyCompanyNamesAsync()).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    "Could not fetch company list from Tally.\n\n" +
-                    "Make sure Tally Prime is open and the gateway server is enabled.\n\n" +
-                    "Error: " + ex.Message,
-                    "Insidash Connector", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using (var dialog = new CompanySelectWindow(_config, companyNames))
-            {
-                if (dialog.ShowDialog() == DialogResult.OK)
+                System.Collections.Generic.List<string> companyNames;
+                try
                 {
-                    _config = LocalConfig.Load(); // reload with new TallyCompanyName
+                    companyNames = Task.Run(async () => await _engine.GetTallyCompanyNamesAsync()).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Could not fetch company list from Tally.\n\nError: " + ex.Message, "Insidash Connector", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
-                    // Verify if this switched company is already activated
-                    if (!_config.Profiles.ContainsKey(_config.TallyCompanyName))
+                using (var dialog = new CompanySelectWindow(_config, companyNames))
+                {
+                    if (dialog.ShowDialog() == DialogResult.OK)
                     {
-                        // Switch Company context, but it is unactivated — trigger activation popup
-                        _trayIcon.ShowBalloonTip(3000, "Insidash", $"'{_config.TallyCompanyName}' is not activated. Opening activation window...", ToolTipIcon.Warning);
-                        using (var activation = new ActivationWindow(_config.TallyCompanyName))
+                        _config = LocalConfig.Load();
+
+                        if (!_config.Profiles.ContainsKey(_config.TallyCompanyName))
                         {
-                            if (activation.ShowDialog() != DialogResult.OK)
+                            _trayIcon.ShowBalloonTip(3000, "Insidash", $"'{_config.TallyCompanyName}' is not activated. Opening activation window...", ToolTipIcon.Warning);
+                            using (var activation = new ActivationWindow(_config.TallyCompanyName))
                             {
-                                // User canceled activation, switch back to previous valid config
-                                return;
+                                if (activation.ShowDialog() != DialogResult.OK) return;
                             }
                         }
+
+                        _config = LocalConfig.Load();
+                        _engine = new SyncEngine(_config, _apiBase);
+                        _engine.OnStatusChanged += UpdateTooltip;
+                        UpdateMenuTexts();
                     }
-
-                    _config = LocalConfig.Load(); // reload config again after activation
-                    _engine = new SyncEngine(_config, _apiBase);
-                    _engine.OnStatusChanged += UpdateTooltip;
-                    UpdateMenuTexts();
-                    RestartBackgroundService();
-
-                    // Trigger sync immediately for the newly selected company
-                    Task.Run(async () => await _engine.RunFullSyncAsync());
                 }
+            }
+            finally
+            {
+                ResumeSync(); // Unlock Tally and restart service
             }
         }
 
@@ -296,53 +302,30 @@ namespace Insidash.TallyConnector
             var confirm = MessageBox.Show(
                 $"This will overwrite or link your active Tally company '{_config.TallyCompanyName}' to a different Insidash account.\n\n" +
                 "Syncing will pause until a new activation key is entered.\n\n" +
-                "Continue?",
-                "Switch Insidash Account",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                "Continue?", "Switch Insidash Account", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (confirm != DialogResult.Yes) return;
 
-            _syncTimer.Stop();
+            SuspendSync(); // Lock Tally
 
-            using (var activation = new ActivationWindow(_config.TallyCompanyName))
-            {
-                if (activation.ShowDialog() == DialogResult.OK)
-                {
-                    _config = LocalConfig.Load();
-                    _engine = new SyncEngine(_config, _apiBase);
-                    _engine.OnStatusChanged += UpdateTooltip;
-                    UpdateMenuTexts();
-
-                    _trayIcon.ShowBalloonTip(2000, "Insidash",
-                        "Reconnected successfully ✓",
-                        ToolTipIcon.Info);
-
-                    RestartBackgroundService();
-
-                    Task.Run(async () => await _engine.RunFullSyncAsync());
-                }
-            }
-
-            _syncTimer.Start();
-        }
-
-        private void RestartBackgroundService()
-        {
             try
             {
-                using (var sc = new ServiceController("InsidashTallyConnector"))
+                using (var activation = new ActivationWindow(_config.TallyCompanyName))
                 {
-                    if (sc.Status == ServiceControllerStatus.Running)
+                    if (activation.ShowDialog() == DialogResult.OK)
                     {
-                        sc.Stop();
-                        sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(10));
-                        sc.Start();
+                        _config = LocalConfig.Load();
+                        _engine = new SyncEngine(_config, _apiBase);
+                        _engine.OnStatusChanged += UpdateTooltip;
+                        UpdateMenuTexts();
+
+                        _trayIcon.ShowBalloonTip(2000, "Insidash", "Reconnected successfully ✓", ToolTipIcon.Info);
                     }
                 }
             }
-            catch
+            finally
             {
-                // Service might not be installed (running local Dev/Debug exe) — ignore safely
+                ResumeSync(); // Unlock Tally
             }
         }
 

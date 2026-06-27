@@ -19,6 +19,8 @@ namespace Insidash.TallyConnector
         private ConnectorConfig         _config;
         private string                  _apiBase;
 
+        private static Mutex _tallyMutex = new Mutex(false, "Global\\InsidashTallyMutex");
+
         public ConnectorService()
         {
             ServiceName = SERVICE_NAME;
@@ -54,70 +56,82 @@ namespace Insidash.TallyConnector
         {
             // Update check on startup
             bool updateStarted = await _updater.CheckAndUpdateAsync();
-            if (updateStarted) return; // Batch script will restart us after update
+            if (updateStarted) return;
 
             DateTime lastSyncTime = DateTime.MinValue;
             DateTime lastUpdateCheck = DateTime.Now;
 
-            while (!ct.IsCancellationRequested)
+            // Define the Mutex (Must match the name in TrayApplication.cs)
+            using (var tallyMutex = new Mutex(false, "Global\\InsidashTallyMutex"))
             {
-                bool shouldSync = false;
-
-                // 1. Check if it's time for a scheduled sync
-                if ((DateTime.Now - lastSyncTime).TotalMilliseconds >= _config.SyncIntervalMs)
+                while (!ct.IsCancellationRequested)
                 {
-                    shouldSync = true;
-                }
-                else
-                {
-                    // 2. Poll the server for any user-initiated "Sync Now" requests
-                    string requestId = await _engine.CheckForManualSyncRequestAsync();
-                    if (requestId != null)
+                    // 1. CHECK FOR MUTEX LOCK
+                    // If Tray App is holding the lock, WaitOne(0) returns false.
+                    if (!tallyMutex.WaitOne(0))
                     {
-                        shouldSync = true;
-                        // Clear the request flag on the server immediately to prevent double runs
-                        await _engine.MarkManualSyncProcessedAsync(requestId);
+                        // Tray App is busy (e.g., Select Company / Sync Now). 
+                        // Skip this cycle and wait briefly.
+                        await Task.Delay(2000, ct);
+                        continue;
                     }
-                }
 
-                if (shouldSync)
-                {
                     try
                     {
-                        await _engine.RunFullSyncAsync();
-                        lastSyncTime = DateTime.Now;
+                        bool shouldSync = false;
+
+                        // 2. Check if it's time for a scheduled sync
+                        if ((DateTime.Now - lastSyncTime).TotalMilliseconds >= _config.SyncIntervalMs)
+                        {
+                            shouldSync = true;
+                        }
+                        else
+                        {
+                            // 3. Poll for manual sync requests
+                            string requestId = await _engine.CheckForManualSyncRequestAsync();
+                            if (requestId != null)
+                            {
+                                shouldSync = true;
+                                await _engine.MarkManualSyncProcessedAsync(requestId);
+                            }
+                        }
+
+                        if (shouldSync)
+                        {
+                            try
+                            {
+                                await _engine.RunFullSyncAsync();
+                                lastSyncTime = DateTime.Now;
+                            }
+                            catch (Exception ex)
+                            {
+                                try { EventLog.WriteEntry(SERVICE_NAME, $"Sync error: {ex.Message}", EventLogEntryType.Warning); } catch { }
+                            }
+                        }
+
+                        // 4. Update check (every 24 hours)
+                        if ((DateTime.Now - lastUpdateCheck).TotalHours >= 24)
+                        {
+                            bool needsRestart = await _updater.CheckAndUpdateAsync();
+                            if (needsRestart) return;
+                            lastUpdateCheck = DateTime.Now;
+                        }
                     }
-                    catch (Exception ex)
+                    finally
                     {
-                        // Log to Windows Event Log
-                        try
-                        {
-                            EventLog.WriteEntry(SERVICE_NAME,
-                                $"Sync error: {ex.Message}", EventLogEntryType.Warning);
-                        }
-                        catch
-                        {
-                            // Ignore EventLog write failures during development
-                        }
+                        // ALWAYS release the mutex so the Tray App or next cycle can run
+                        tallyMutex.ReleaseMutex();
                     }
-                }
 
-                // Check for updates once every 24 hours
-                if ((DateTime.Now - lastUpdateCheck).TotalHours >= 24)
-                {
-                    bool needsRestart = await _updater.CheckAndUpdateAsync();
-                    if (needsRestart) return;
-                    lastUpdateCheck = DateTime.Now;
-                }
-
-                // Wait 10 seconds before polling again
-                try 
-                { 
-                    await Task.Delay(10000, ct); 
-                }
-                catch (TaskCanceledException) 
-                { 
-                    break; 
+                    // 5. Wait 10 seconds before polling again
+                    try
+                    {
+                        await Task.Delay(10000, ct);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
                 }
             }
         }

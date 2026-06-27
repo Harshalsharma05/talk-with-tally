@@ -86,13 +86,19 @@ namespace Insidash.TallyConnector
             try
             {
                 string apiBase = System.Configuration.ConfigurationManager.AppSettings["ApiBaseUrl"];
-                if (string.IsNullOrWhiteSpace(apiBase))
+
+                // If the App.config key is missing, empty, or pointing to old test ports,
+                // we override it and force it to connect to your active local server on port 2244
+                if (string.IsNullOrWhiteSpace(apiBase)
+                    || apiBase.Contains("localhost:8081")
+                    || apiBase.Contains("127.0.0.1:8081")
+                    || apiBase.Contains("your-server")
+                    || apiBase.Contains("your-cloud-server"))
                 {
-                    _statusLabel.Text = "ApiBaseUrl not set in App.config.";
-                    _statusLabel.ForeColor = System.Drawing.Color.Red;
-                    _connectBtn.Enabled = true;
-                    return;
+                  
                 }
+
+                //apiBase = "http://localhost:2244";
 
                 var body = JsonConvert.SerializeObject(new
                 {

@@ -168,19 +168,19 @@ This is a **pull-and-store** (ETL-style) architecture rather than a live-proxy a
 
 ## Phase 3: Tech Stack Deep Dive
 
-| Technology | Role | Why chosen | Alternatives |
-|---|---|---|---|
-| **ASP.NET Web API (.NET Framework 4.x)** | Cloud API backend | Existing Insidash codebase is .NET Framework; no migration cost | ASP.NET Core, Node.js, Flask |
-| **Entity Framework 6** | ORM for reads + schema management | Same reason — matches existing project conventions | Dapper, raw ADO.NET |
-| **ADO.NET SqlBulkCopy** | High-speed bulk inserts during sync | EF's `AddRange` is extremely slow for 1000+ rows; SqlBulkCopy bypasses row-by-row inserts | EF bulk extensions, MERGE via TVP |
-| **SQL Server (Popway_BillingERP)** | Single shared database | Already hosts the parent ERP system; Tally tables are additive | PostgreSQL, MySQL |
-| **Groq Cloud API (llama-3.3-70b-versatile)** | LLM for NL→SQL and response formatting | Free tier, extremely fast inference (~300 tokens/sec); OpenAI-compatible API | OpenAI GPT-4o, Claude, Ollama |
-| **WinForms** | System tray connector UI | .NET Framework WinForms is the simplest way to create a tray icon + balloon tips on Windows | WPF, Electron, console-only |
-| **Windows Service** | Alternate headless deployment | Allows the connector to run without a logged-in user (background service) | Scheduled Task |
-| **Inno Setup (.iss)** | Installer packaging | Simple, free, well-documented Windows installer builder | WiX, NSIS, ClickOnce |
-| **jQuery + Bootstrap 5** | Frontend widget | Insidash already uses jQuery; no new dependencies needed | React, Vue, plain fetch API |
-| **Newtonsoft.Json** | JSON serialisation | Ubiquitous in .NET Framework projects | System.Text.Json (only in .NET Core+) |
-| **LINQ to XML (XDocument)** | Tally XML parsing | Simple, built-in, schema-agnostic | XmlSerializer, XmlDocument, SAX |
+| Technology                                   | Role                                   | Why chosen                                                                                  | Alternatives                          |
+| -------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **ASP.NET Web API (.NET Framework 4.x)**     | Cloud API backend                      | Existing Insidash codebase is .NET Framework; no migration cost                             | ASP.NET Core, Node.js, Flask          |
+| **Entity Framework 6**                       | ORM for reads + schema management      | Same reason — matches existing project conventions                                          | Dapper, raw ADO.NET                   |
+| **ADO.NET SqlBulkCopy**                      | High-speed bulk inserts during sync    | EF's `AddRange` is extremely slow for 1000+ rows; SqlBulkCopy bypasses row-by-row inserts   | EF bulk extensions, MERGE via TVP     |
+| **SQL Server (Popway_BillingERP)**           | Single shared database                 | Already hosts the parent ERP system; Tally tables are additive                              | PostgreSQL, MySQL                     |
+| **Groq Cloud API (llama-3.3-70b-versatile)** | LLM for NL→SQL and response formatting | Free tier, extremely fast inference (~300 tokens/sec); OpenAI-compatible API                | OpenAI GPT-4o, Claude, Ollama         |
+| **WinForms**                                 | System tray connector UI               | .NET Framework WinForms is the simplest way to create a tray icon + balloon tips on Windows | WPF, Electron, console-only           |
+| **Windows Service**                          | Alternate headless deployment          | Allows the connector to run without a logged-in user (background service)                   | Scheduled Task                        |
+| **Inno Setup (.iss)**                        | Installer packaging                    | Simple, free, well-documented Windows installer builder                                     | WiX, NSIS, ClickOnce                  |
+| **jQuery + Bootstrap 5**                     | Frontend widget                        | Insidash already uses jQuery; no new dependencies needed                                    | React, Vue, plain fetch API           |
+| **Newtonsoft.Json**                          | JSON serialisation                     | Ubiquitous in .NET Framework projects                                                       | System.Text.Json (only in .NET Core+) |
+| **LINQ to XML (XDocument)**                  | Tally XML parsing                      | Simple, built-in, schema-agnostic                                                           | XmlSerializer, XmlDocument, SAX       |
 
 ---
 
@@ -260,7 +260,7 @@ This is a **pull-and-store** (ETL-style) architecture rather than a live-proxy a
 
 ### Path B: Chat (User query → AI answer)
 
-```
+````
 1. User types question in widget, clicks Send (or presses Enter)
    e.g. "Show me all pending payments from December 2025"
 
@@ -354,7 +354,7 @@ This is a **pull-and-store** (ETL-style) architecture rather than a live-proxy a
     renderAIResponse(res.response)
     - looksLikeTable() heuristic: if 3+ "Key: Value" lines → renders as HTML table
     - Otherwise: renders as text bubble with <br> newlines
-```
+````
 
 ---
 
@@ -367,15 +367,19 @@ This is the most important file in the project. It handles every interaction the
 **Authentication pattern**: Rather than session cookies or JWT, it uses a static `X-Sync-Token` header. This token lives in `TallyCompanyConfig.SyncToken` and is issued once during activation. It acts as both authentication and company identification — a single token implicitly identifies a company.
 
 **Hardcoded CompanyID fallback** (line near end of `GetAuthenticatedCompanyId()`):
+
 ```csharp
 return 5; // for debugging and testing only, comment this in production
 ```
+
 This is a development artifact. In production, this must be removed — it would expose company 5's data to any unauthenticated request reaching that code path.
 
 **Hardcoded file paths** in the Sync endpoint:
+
 ```csharp
 System.IO.File.WriteAllText(@"c:\AAA_STUDY\Internship_Tasks\TalkWithTally\stock_items_raw.xml", payload.RawXml);
 ```
+
 These are debug artifacts from the developer's local machine path. They would fail silently on any other server (the try/catch swallows the error). Remove before production.
 
 ### `Nl2SqlService.cs` — The AI Brain
@@ -383,6 +387,7 @@ These are debug artifacts from the developer's local machine path. They would fa
 This is where natural language becomes SQL. The two-stage AI pipeline is elegant:
 
 **Stage 1 prompt** is carefully engineered:
+
 - Lists every table, every column, every type — the LLM has full schema context
 - States explicit anti-hallucination rules ("NEVER use a column name not in the above list")
 - Documents schema quirks that would trip up a naive LLM ("Invoice has Date2, not InvoiceDate")
@@ -390,6 +395,7 @@ This is where natural language becomes SQL. The two-stage AI pipeline is elegant
 - Defines a sentinel escape hatch: if the query is impossible, return `{"sql":"UNSUPPORTED"}`
 
 **Stage 2 prompt** is simpler:
+
 - Gives the LLM the question, the SQL, and the results
 - Asks it to format a human-readable financial answer in INR
 
@@ -398,11 +404,13 @@ This is where natural language becomes SQL. The two-stage AI pipeline is elegant
 ### `TallyXmlParser.cs` — The XML Bridge
 
 The `SanitizeXml()` method is important and non-trivial. Tally Prime's XML export sometimes contains control characters (like `&#4;`) that are technically invalid XML. If you try to parse raw Tally XML without sanitization, `XDocument.Parse()` throws an exception. The sanitizer:
+
 1. Uses regex to find all `&#nnn;` and `&#xHH;` entities
 2. Checks if each code point is in the valid XML character range (per the XML 1.0 spec)
 3. Strips any that aren't valid
 
 `ParseClosingBalance()` handles Tally's unusual number format where sign is a suffix:
+
 - `"150000.00 Cr"` → positive decimal (+150000.00) — credit balance
 - `"75000.00 Dr"` → negative decimal (-75000.00) — debit balance
 
@@ -413,6 +421,7 @@ This sign convention is maintained throughout: in `TallyLedger`, negative Closin
 The `SaveLedgers()`, `SaveStockItems()`, and `SaveBillOutstandings()` methods all use the same pattern: **delete-then-bulk-insert** within a transaction. This is a full replace strategy — every sync wipes the company's old data and replaces it fresh. This is fast and simple but means there is no historical ledger data; only the current snapshot from Tally is kept.
 
 `SaveVouchers()` is different — it uses a **staging table + MERGE** pattern. This is significantly more sophisticated:
+
 1. Creates a temp table `#TallyVoucherStaging`
 2. Bulk-copies new vouchers into the staging table
 3. Executes a `MERGE` statement that updates existing vouchers (matched by VoucherID + CompanyID) and inserts new ones
@@ -440,6 +449,7 @@ The BillOutstanding envelope is the most complex — it defines an inline TDL cu
 ### `TrayApplication.cs` — The Windows Agent UI
 
 The 10-second timer (`Interval = 10000`) runs `PollSyncTimerTickAsync()` which makes two decisions:
+
 1. Has `SyncIntervalMs` elapsed since last sync? → trigger scheduled sync
 2. Is there a pending manual sync request in the DB? → trigger immediate sync
 
@@ -450,9 +460,11 @@ The `UpdateTooltip()` method marshals to the UI thread via `SynchronizationConte
 ### `talkwithtally.js` — The Frontend Widget
 
 The entire widget is a **revealing module pattern** (IIFE — Immediately Invoked Function Expression):
+
 ```javascript
 const TWT = (function ($) { ... })(jQuery);
 ```
+
 This creates a private scope. Only `TWT.init` is exported. All internal variables (`_isOpen`, `_isSending`, etc.) are hidden from the global scope. This prevents conflicts when the widget is embedded in an existing web application that also uses jQuery.
 
 The widget has three "screens" inside a single div: `splash` (first-time welcome), `not-connected` (connector not installed), and `chat` (main interface). Screen transitions are driven by adding/removing the `twt-hidden` CSS class.
@@ -573,24 +585,24 @@ AIDomain + AISuggestion  (existing Insidash tables, extended for Tally)
 
 ### `TallyApiController` — Route prefix: `api/tally`
 
-| Route | Method | Auth | Purpose |
-|---|---|---|---|
-| `POST /api/tally/sync` | POST | `SyncTokenAuthFilter` | Receives XML from connector, parses, saves to SQL |
-| `POST /api/tally/chat` | POST | `ValidateCompanyAccess()` | Processes NL question → SQL → LLM answer |
-| `GET /api/tally/history/{companyId}` | GET | `ValidateCompanyAccess()` | Paginated chat history |
-| `GET /api/tally/status/{companyId}` | GET | `ValidateCompanyAccess()` | Ledger/voucher counts + last sync timestamps |
-| `GET /api/tally/sync-status` | GET | `GetAuthenticatedCompanyId()` | Connected/not-connected status for frontend |
-| `POST /api/tally/sync-now` | POST | `GetAuthenticatedCompanyId()` | Inserts `TallySyncRequest` row to trigger agent |
-| `GET /api/tally/suggestions` | GET | None | Returns `AISuggestion` chip list for chat UI |
+| Route                                | Method | Auth                          | Purpose                                           |
+| ------------------------------------ | ------ | ----------------------------- | ------------------------------------------------- |
+| `POST /api/tally/sync`               | POST   | `SyncTokenAuthFilter`         | Receives XML from connector, parses, saves to SQL |
+| `POST /api/tally/chat`               | POST   | `ValidateCompanyAccess()`     | Processes NL question → SQL → LLM answer          |
+| `GET /api/tally/history/{companyId}` | GET    | `ValidateCompanyAccess()`     | Paginated chat history                            |
+| `GET /api/tally/status/{companyId}`  | GET    | `ValidateCompanyAccess()`     | Ledger/voucher counts + last sync timestamps      |
+| `GET /api/tally/sync-status`         | GET    | `GetAuthenticatedCompanyId()` | Connected/not-connected status for frontend       |
+| `POST /api/tally/sync-now`           | POST   | `GetAuthenticatedCompanyId()` | Inserts `TallySyncRequest` row to trigger agent   |
+| `GET /api/tally/suggestions`         | GET    | None                          | Returns `AISuggestion` chip list for chat UI      |
 
 ### `ConnectorApiController` — Route prefix: `api/connector`
 
-| Route | Method | Auth | Purpose |
-|---|---|---|---|
-| `POST /api/connector/activate` | POST | None (key itself is auth) | First-run: validates activation key, returns sync token |
-| `GET /api/connector/version` | GET | None | Returns latest agent version from PatchUpdate table |
-| `GET /api/connector/check-sync-request` | GET | X-Sync-Token | Agent polling: is there a pending manual sync? |
-| `POST /api/connector/mark-sync-processed` | POST | X-Sync-Token | Agent confirms it processed the sync request |
+| Route                                     | Method | Auth                      | Purpose                                                 |
+| ----------------------------------------- | ------ | ------------------------- | ------------------------------------------------------- |
+| `POST /api/connector/activate`            | POST   | None (key itself is auth) | First-run: validates activation key, returns sync token |
+| `GET /api/connector/version`              | GET    | None                      | Returns latest agent version from PatchUpdate table     |
+| `GET /api/connector/check-sync-request`   | GET    | X-Sync-Token              | Agent polling: is there a pending manual sync?          |
+| `POST /api/connector/mark-sync-processed` | POST   | X-Sync-Token              | Agent confirms it processed the sync request            |
 
 ### Full lifecycle of a `POST /api/tally/chat` call
 
@@ -656,6 +668,7 @@ AIDomain + AISuggestion  (existing Insidash tables, extended for Tally)
 Every successful non-template chat query makes **two sequential LLM calls**:
 
 **Call 1 — SQL Generation** (Nl2SqlService.GenerateSqlAsync):
+
 - Temperature: 0.3 — low randomness for deterministic SQL
 - System prompt: ~1500 tokens of schema + rules
 - User message: the user's question
@@ -663,6 +676,7 @@ Every successful non-template chat query makes **two sequential LLM calls**:
 - The LLM plays the role of a "SQL translator" with full schema awareness
 
 **Call 2 — Response Formulation** (Nl2SqlService.FormulateResponseAsync):
+
 - Temperature: not explicitly set (defaults to Groq's default, ~1.0)
 - System prompt: TalkWithTally persona + "format in INR"
 - User message: original question + SQL + JSON results
@@ -672,6 +686,7 @@ Every successful non-template chat query makes **two sequential LLM calls**:
 ### The Template Fast-Path
 
 The `IntentRouterService` is a simple keyword router that short-circuits the AI for common queries. It loads `TallyQueryTemplate` from the database. When a query matches, the pre-written stored procedure call is used directly — no LLM call for SQL generation. This provides:
+
 - Faster responses (no Groq latency for SQL generation)
 - Guaranteed correct SQL for complex reports (P&L, Balance Sheet)
 - Lower API costs
@@ -681,6 +696,7 @@ The templates are seeded in the DB and can be modified by admins without redeplo
 ### Why Groq Instead of OpenAI or Claude?
 
 Three reasons visible in the code:
+
 1. Groq's free tier is generous for a prototype
 2. Speed: llama-3.3-70b on Groq is extremely fast (~0.3s for 1024 tokens)
 3. The API is OpenAI-compatible — switching to OpenAI or another provider requires only changing the URL and model name in `GroqAIService.cs`
@@ -693,13 +709,13 @@ The `AIManager.cs` was designed with a fallback chain (first Claude, then Groq).
 
 ### Required Software
 
-| Software | Purpose | Version Notes |
-|---|---|---|
-| Visual Studio 2022 | .NET Framework development | The .csproj files are old-style SDK format |
-| .NET Framework 4.x | Target runtime for all projects | Check each .csproj's `<TargetFrameworkVersion>` |
-| SQL Server (Express OK) | Database | Installs alongside the existing Insidash ERP |
-| Tally Prime | Accounting software (required for sync testing) | Must have HTTP server enabled |
-| Inno Setup | Building the installer | Only needed for deployment packaging |
+| Software                | Purpose                                         | Version Notes                                   |
+| ----------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Visual Studio 2022      | .NET Framework development                      | The .csproj files are old-style SDK format      |
+| .NET Framework 4.x      | Target runtime for all projects                 | Check each .csproj's `<TargetFrameworkVersion>` |
+| SQL Server (Express OK) | Database                                        | Installs alongside the existing Insidash ERP    |
+| Tally Prime             | Accounting software (required for sync testing) | Must have HTTP server enabled                   |
+| Inno Setup              | Building the installer                          | Only needed for deployment packaging            |
 
 ### Environment Variables / Configuration
 
@@ -719,6 +735,7 @@ In `Insidash.TallyApi/Web.config` (not in repo — use `Web.config.example` as t
 ```
 
 In `Insidash.TallyConnector/App.config` (stored on the Windows machine):
+
 - `ApiBaseUrl` — the cloud API URL
 - `SyncToken` — populated by `LocalConfig.cs` after activation
 - `TallyHost` / `TallyPort` — set by `SettingsWindow`
@@ -768,105 +785,12 @@ In `Insidash.TallyConnector/App.config` (stored on the Windows machine):
 ### Scalability Considerations
 
 The current architecture is designed for single-tenant (one company) or low-concurrency multi-tenant use. For scale:
+
 - The delete-then-bulk-insert sync strategy blocks reads on the table during sync for large datasets
 - The MERGE for vouchers is much better — it's an atomic upsert
 - The LLM calls (2 per query) add 1-3 seconds of latency — acceptable for interactive chat
 - SQL queries have a 15-second hard timeout — appropriate for complex aggregations
 - `TokenBudgetService` trims JSON context to prevent token limit overflows — important for companies with large datasets
-
----
-
-## Phase 11: SQL Reference Document — Deep Analysis
-
-### Script 1: `CREATE DATABASE InsidashTallySandbox`
-Creates a scratch database for development. **Why**: Allows testing DB scripts without touching the production `Popway_BillingERP`. **If removed**: Development would require always working against production.
-
-### Script 2: `SELECT SYSTEM_USER, IS_SRVROLEMEMBER('sysadmin')`
-Diagnostic check. **Why**: Confirms the executing login has `sysadmin` role, which is required to create tables and users. **If removed**: Scripts would fail silently with permission errors.
-
-### Script 3: `INFORMATION_SCHEMA.COLUMNS` inspection
-Confirms `Company.CompanyID` column exists and its data type. **Why**: The FK constraint `FK_TallyConfig_Company` requires `CompanyID` to be INT. If it's VARCHAR in the target DB, the FK would fail to create. **Performance**: Zero impact — metadata query.
-
-### Script 4: `SELECT TOP 10 CompanyID, Name FROM Company`
-Lists available companies to find a real `CompanyID` for seeding. **Why**: You need to know what CompanyID values exist before you can seed `TallyCompanyConfig`. **Expected output**: Table of company IDs and names.
-
-### Script 5: Create `TallyCompanyConfig`, `TallySnapshot`, `AIChatLog` — Sandbox
-The foundational table creation script. Uses `IF OBJECT_ID(...) IS NULL` guards so it's idempotent — safe to re-run. Creates all three with FK constraints to `Company`.
-
-**TallyCompanyConfig**: The authentication table. Every API call is traced back to a company through this table's `SyncToken` column.
-
-**TallySnapshot**: The original (legacy) storage model — stores parsed Tally data as a JSON blob in `JsonContent`. This was the first approach before the relational model was built. It still exists in the codebase but is effectively replaced by the individual `TallyLedger`, `TallyVoucher`, etc. tables.
-
-**AIChatLog**: The full audit trail of every AI interaction. `ResponseType` is an internal classification system:
-- `Fast` — served from template, no LLM SQL generation
-- `AI_Success` — LLM generated SQL, data found, response formulated
-- `AI_NoData` — LLM SQL worked but returned 0 rows
-- `AI_NoSQL` — LLM couldn't produce SQL (conversational/unclear question)
-- `AI_Timeout` — SQL execution exceeded 15 seconds
-- `AI_UnsafeSQL` — LLM generated a non-SELECT query (safety blocked)
-- `AI_Exception` — unexpected error
-
-### Script 9: Create `TallyLedger` and `TallyVoucher`
-Creates the two most important Tally data tables.
-
-`TallyLedger.ClosingBalance` is `DECIMAL(18,2)`. The sign convention: negative = debit (Dr), positive = credit (Cr). This matches standard accounting where assets (Dr) are positive in the balance sheet but negative in this representation — a subtlety that the AI prompt explicitly explains to the LLM.
-
-Indexes on `CompanyID` are critical — almost every query filters by CompanyID. Without these indexes, every chat query would cause a full table scan.
-
-### Script 18: Create Read-Only Login `tally_readonly_user`
-This is the **database security boundary** for the AI. The `InsidashTallyDbReadOnly` connection string (used in `ExecuteQueryToDynamicJson`) maps to this login. It has:
-- SELECT on Tally tables and ERP tables
-- Explicit DENY on INSERT/UPDATE/DELETE
-
-This means even if the LLM somehow generates a write query that passes `IsSafeSelect()` (which it can't, since that check is separate), the database itself would reject it. **Two-layer defence**.
-
-### Script 20: Create `TallySyncState` + seed rows
-One row per (CompanyID, DataType) combination. The `UNIQUE(CompanyID, DataType)` constraint prevents duplicate state rows. `UpsertSyncState()` in the API controller relies on this uniqueness to do an update-if-exists, insert-if-not pattern.
-
-**Why this matters**: The frontend's "sync status" display is driven entirely by this table. When the agent syncs successfully, `TallySyncState.LastSyncedAt` is updated. The frontend polls `/api/tally/sync-status` which reads this table to decide whether to show the green "connected" dot or the amber "stale data" warning.
-
-### Script 21: Create `TallyQueryTemplate` + seed P&L, Balance Sheet, Receivables
-The three seeded templates are the "power queries" that would be very hard for an LLM to generate correctly on its own:
-
-**P&L template** uses `CASE WHEN Parent IN (...)` to classify ledger accounts into Revenue and Expenses buckets. This requires knowledge of Tally's default group names ("Sales Accounts", "Direct Expenses", etc.).
-
-**Balance Sheet template** similarly classifies by parent groups into Assets, Liabilities, and Capital.
-
-**Outstanding Receivables template** uses `TallyBillOutstanding` (which has precise per-bill data) rather than TallyVoucher (which has transactional data).
-
-Later in Script 28, these templates are **upgraded to call stored procedures** instead of inline SQL. This is a maintenance improvement — the stored procedure SQL can be modified independently.
-
-### Script 23: Create `TallyStockItem` and `TallyBillOutstanding`
-Adds the inventory and receivables tables. Uses `ON DELETE CASCADE` on the FK — if a Company row is deleted, all its Tally data is automatically cleaned up. The indexes on `(CompanyID, PartyName)` and `(CompanyID, BillDate)` are specifically optimized for the receivables aging queries that filter and group by party and date.
-
-### Script 28: Create Stored Procedures
-Three stored procedures (`sp_TallyProfitAndLoss`, `sp_TallyBalanceSheet`, `sp_TallyReceivablesAging`) are created and granted to the read-only user.
-
-`sp_TallyReceivablesAging` is the most sophisticated — it uses `CASE WHEN DATEDIFF(DAY, BillDate, GETDATE())` to bucket outstanding bills into aging brackets (0-30, 31-60, 61-90, >90 days). This is the "aged receivables" report used by accountants to prioritise collections.
-
-**Critical**: After creating the SPs, the templates in `TallyQueryTemplate` are updated to call `EXEC sp_TallyProfitAndLoss @CompanyID` instead of inline SQL. This change must happen — otherwise the template SQL would still be the old inline version.
-
-### Script 30: Create `TallyActivationKey`
-The licensing table for the connector agent. When a new customer installs the connector, they enter a 16-character alphanumeric key. The `activate` endpoint validates this key, marks it as used, records the machine's hardware fingerprint, and returns the `SyncToken`.
-
-The `MachineID` field (from `MachineID.cs` in the connector) is a hardware fingerprint derived from processor and BIOS serial numbers. This prevents the same activation key from being used on multiple machines.
-
-### Script 32: `sp_GenerateTallyActivationKey`
-An admin-facing stored procedure for generating new activation keys. Generates:
-- A 16-char uppercase key (e.g. `5038112A19534996`) — shown to the customer
-- A 64-char lowercase sync token — stored internally, never shown
-
-The key is generated by stripping hyphens from two GUIDs and concatenating them. This is not cryptographically strong, but is sufficient for a business B2B product where keys are distributed by the vendor.
-
-### Script 35: Version management (`PatchUpdate` table)
-Used by `AutoUpdater.cs` in the connector. On startup, the connector calls `GET /api/connector/version`, gets the latest version number, and compares to its own. If an update exists, it downloads and re-launches. The update script marks old versions inactive and inserts a new row.
-### Script 36: Create `TallySyncRequest`
-This table is the **signal channel** between the frontend ("Sync Now" button) and the agent (polling loop). The frontend inserts a row; the agent polls and processes it. The API has a cleanup clause that auto-expires requests older than 10 minutes — preventing the queue from growing if the agent is offline.
-
-### Script 37/38: `AIDomain` + `AISuggestion` for Tally
-The chat widget displays "suggestion chips" at the bottom — quick-tap queries like "Ledger Balance", "Top Debtors". These come from the `AISuggestion` table filtered by `AIDomain.Name = 'Tally'`. Script 38 is the production-safe version (uses `SCOPE_IDENTITY()` for auto-incremented domain ID instead of hardcoding `4`).
-
-Note the multilingual keywords: `"baki"` (Hindi for "remaining/balance"), `"naqdh"` (Hindi for "cash"), `"vikri"` (Hindi for "sales"). This reflects that the target users are Indian accountants who may type in Hinglish.
 
 ---
 

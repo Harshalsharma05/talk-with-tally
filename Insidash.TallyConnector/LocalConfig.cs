@@ -11,11 +11,26 @@ namespace Insidash.TallyConnector
     {
         public string SyncToken { get; set; }
         public int CompanyID { get; set; }
+
+        // PER-COMPANY CHUNKING & INCREMENTAL STATE
+        // Tracking variables are added here so each company manages its own sync state independently.
+        
+        // Default historical benchmark window (Tally Date format: YYYYMMDD)
+        public string HistoricalStartDate { get; set; } = "20240401"; 
+        
+        // Tracks the timestamp of the last successful synchronization execution window
+        public DateTime? LastVoucherSyncAt { get; set; } 
+        public DateTime? LastOutstandingSyncAt { get; set; }
+
+        // Tally uses integer counters (AlterIDs) to track every internal creation, edit, or deletion.
+        public int LastVoucherAlterId { get; set; } = 0;
+        public int LastMasterAlterId { get; set; } = 0;
+        public int LastOutstandingAlterId { get; set; }
     }
 
     public class ConnectorConfig
     {
-        // NEW: Stores activated profiles mapped by TallyCompanyName
+        // Stores activated profiles mapped by TallyCompanyName
         // Using StringComparer.OrdinalIgnoreCase prevents casing discrepancies
         public Dictionary<string, CompanyProfile> Profiles { get; set; } = new Dictionary<string, CompanyProfile>(StringComparer.OrdinalIgnoreCase);
 
@@ -73,7 +88,7 @@ namespace Insidash.TallyConnector
                 config.Profiles = new Dictionary<string, CompanyProfile>(StringComparer.OrdinalIgnoreCase);
             }
 
-            // ── SEAMLESS BACKWARD COMPATIBILITY MIGRATION ──
+            // SEAMLESS BACKWARD COMPATIBILITY MIGRATION
             // If we load an old config that has root-level credentials and a target company name,
             // migrate it into the Profiles dictionary and save it immediately.
             if (!string.IsNullOrWhiteSpace(config.SyncToken) && !string.IsNullOrWhiteSpace(config.TallyCompanyName))
@@ -83,7 +98,11 @@ namespace Insidash.TallyConnector
                     config.Profiles[config.TallyCompanyName] = new CompanyProfile
                     {
                         SyncToken = config.SyncToken,
-                        CompanyID = config.CompanyID
+                        CompanyID = config.CompanyID,
+                        HistoricalStartDate = "20240401", // Initialize defaults for migrated profiles
+                        LastVoucherSyncAt = null,
+                        LastVoucherAlterId = 0,
+                        LastMasterAlterId = 0
                     };
 
                     // Clear legacy properties to complete migration
